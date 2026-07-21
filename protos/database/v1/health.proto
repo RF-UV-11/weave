@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package database.v1;
+
+option go_package = "servicesphere/backend-services/gen/database/v1;databasev1";
+
+message CheckRequest {}
+
+message CheckResponse {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_SERVING = 1;
+    STATUS_NOT_SERVING = 2;
+  }
+  Status status = 1;
+}
+
+// Implemented by every Connect server in every service group (backend-services,
+// ai-services, analysis-services) so uptime/readiness checks are uniform.
+service HealthService {
+  rpc Check(CheckRequest) returns (CheckResponse);
+}

@@ -1,0 +1,18 @@
+version: v2
+managed:
+  enabled: true
+inputs:
+  - directory: .
+plugins:
+  # Go structs
+  - local: protoc-gen-go
+    out: ../backend-services/gen
+    opt: paths=source_relative
+  # Go Connect service stubs (client + handler interfaces)
+  - local: protoc-gen-connect-go
+    out: ../backend-services/gen
+    opt: paths=source_relative
+
+# Python plugins (ai-services/gen, analysis-services/gen) are added in Phase 1
+# once those services exist — see PLAN.md Phase 1 and CLAUDE.md "protos/ is the
+# contract source of truth."

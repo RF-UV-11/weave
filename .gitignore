@@ -1,0 +1,45 @@
+# Env
+.env
+.env.local
+
+# Go
+backend-services/gen/
+**/*.exe
+**/*.test
+backend-services/bin/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+ai-services/gen/
+analysis-services/gen/
+.pytest_cache/
+.ruff_cache/
+
+# Node / Next.js
+node_modules/
+frontend-services/web/.next/
+frontend-services/web/out/
+.pnpm-store/
+
+# Streamlit
+frontend-services/streamlit-demo/.streamlit/secrets.toml
+
+# Podman / containers
+*.tar
+
+# IDE / OS
+.vscode/
+.idea/
+.claude/settings.local.json
+.DS_Store
+Thumbs.db
+
+# Buf
+.buf-cache/
+
+# Logs
+*.log

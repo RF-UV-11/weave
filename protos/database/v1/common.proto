@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package database.v1;
+
+option go_package = "servicesphere/backend-services/gen/database/v1;databasev1";
+
+// Cursor-pagination request fields, embedded in list RPCs.
+message PageRequest {
+  string page_token = 1;
+  int32 page_size = 2;
+}
+
+// Cursor-pagination response fields, embedded in list RPC responses.
+message PageResponse {
+  string next_page_token = 1;
+}
+
+// Structured error detail carried in Connect/gRPC status details.
+message ErrorDetail {
+  string code = 1;
+  string message = 2;
+  map<string, string> details = 3;
+}
+
+// Every tenant-scoped RPC carries this, either embedded or as tenant_id directly.
+message TenantScope {
+  string tenant_id = 1;
+}
+
+message Money {
+  int64 minor_units = 1; // e.g. cents
+  string currency = 2;   // ISO 4217, e.g. "USD"
+}
