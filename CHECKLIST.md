@@ -15,18 +15,18 @@ Legend: `[ ]` not started · `[~]` in progress / partial · `[x]` done and wired
 ## 1. Foundations & cross-cutting
 
 ### Contracts (`protos/` + buf)
-- [ ] `buf.yaml` + `buf.gen.yaml` generating Go + Python stubs
-- [ ] `buf lint` + `buf breaking` wired into CI
-- [ ] `protos/database/v1/` shared types (`Page`, `ErrorDetail`, `TenantScope`, `Money`)
-- [ ] `protos/backend_services/data_access/v1/` domains defined (see §2.1)
+- [~] `buf.yaml` + `buf.gen.yaml` generating stubs — Go done; Python targets land in Phase 1 with `ai-services`
+- [~] `buf lint` clean and passing; `buf breaking` + CI wiring comes with Phase 10 CI/CD
+- [x] `protos/database/v1/` shared types (`PageRequest`/`PageResponse`, `ErrorDetail`, `TenantScope`, `Money`, `Health`)
+- [~] `protos/backend_services/data_access/v1/` domains defined — `ticket` done, rest in Phase 8 (see §2.1)
 - [ ] `protos/ai_services/v1/chat.proto` (server-streaming)
 - [ ] `protos/analysis_services/v1/` capabilities
 
 ### Infra & tooling
-- [ ] `infra/podman-compose.yml` — mongo, redis, qdrant, minio, langfuse healthy
-- [ ] `infra/containerfiles/` per service
-- [ ] `.env.example` complete
-- [ ] Root `Makefile`/`justfile` (`make up/gen/down/logs`)
+- [~] `infra/podman-compose.yml` — written (mongo, redis, qdrant, minio, backend-services); **not yet runtime-verified** (WSL2/Podman machine not available in current dev environment — see PLAN.md Phase 0 notes)
+- [~] `infra/containerfiles/` per service — `backend-services.Containerfile` done
+- [x] `.env.example` complete
+- [x] Root `Makefile` (`make up/gen/down/logs/lint/build-backend/test-backend`)
 - [ ] `packages/shared-auth` — JWT-verify Connect interceptor + RBAC helper (Go + Python)
 - [ ] `packages/shared-clients` — pre-wired Connect clients to backend/analysis
 - [ ] `packages/proto-stubs` — re-exports of generated stubs
@@ -37,9 +37,9 @@ Legend: `[ ]` not started · `[~]` in progress / partial · `[x]` done and wired
 
 ### 2.1 `backend-services` (Go) — the only DB tier
 Data-access domains (proto + repository + index bootstrap + Connect handler + `Health`):
-- [ ] `database/mongo.go` (single Mongo client — the only DB creds in the repo)
-- [ ] `data-access/cmd/server` (Connect server, `Health` RPC)
-- [ ] **ticket** — `CreateTicket`, `GetTicket`, `ListTickets`
+- [x] `database/mongo.go` (single Mongo client — the only DB creds in the repo)
+- [x] `data-access/cmd/server` (Connect server, `Health` RPC) — builds and vets clean; not yet run against a live Mongo instance
+- [x] **ticket** — `CreateTicket`, `GetTicket`, `ListTickets` (code complete; runtime-unverified pending Podman)
 - [ ] **chat** — `AppendMessage`, `GetSession`, `WriteMemory`, `GetPreferences`
 - [ ] **knowledge-base** — `ListArticles`, `UpsertArticle`
 - [ ] **calendar** — `GetAvailability`, `BookMeeting`
@@ -161,6 +161,6 @@ Newest first. One row per released version.
 
 | Version | Date | Phase | Highlights |
 |---|---|---|---|
-| _(unreleased)_ | — | 0 | Pre-implementation: docs and architecture defined; no code yet |
+| _(unreleased)_ | — | 0 | `protos/` + Go `backend-services` skeleton (ticket domain) built and compiling; `podman-compose up` runtime verification still pending (Podman/WSL2 not available in current dev environment) |
 
 > When you cut a release: add a row here, add a matching `CHANGELOG.md` entry, tag the commit (`git tag v0.x.0`), and make sure the phase's boxes above are all `[x]`.

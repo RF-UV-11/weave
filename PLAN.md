@@ -15,19 +15,23 @@ How to use this file with Claude Code:
 
 **Goal**: the skeleton plus the *spine*: a real `protos/` contract, generated stubs, and a Go `backend-services` RPC writing to MongoDB. Nothing touches the DB except this tier, from day one.
 
-- [ ] Init git repo, `.gitignore` (Go, Python, Node, `gen/`, `.env`)
-- [ ] Create top-level groups per `CLAUDE.md` repo layout: `protos/`, `backend-services/`, `ai-services/`, `analysis-services/`, `frontend-services/`, `channels/`, `mcp-servers/`, `domain-packs/`, `packages/`, `infra/`, `docs/`, `scripts/`
-- [ ] `protos/buf.yaml` + `protos/buf.gen.yaml` — codegen to Go (`backend-services/gen`) and Python (`ai-services/gen`, `analysis-services/gen`); `buf lint` + `buf breaking` clean
-- [ ] First contract: `protos/backend_services/data_access/v1/ticket.proto` (`CreateTicket`, `GetTicket`) + `protos/database/v1/` shared types (`Page`, `ErrorDetail`, `TenantScope`)
-- [ ] `backend-services/` Go module: `database/mongo.go` (the ONLY Mongo client), `database/repositories/ticket_repo.go`, `database/migrate/` (ensure indexes), `data-access/ticket/` handler, `data-access/cmd/server/main.go` (Connect server + `Health` RPC)
-- [ ] `infra/podman-compose.yml` with infra only: `mongo`, `redis:7`, `qdrant/qdrant`, `minio/minio`, healthchecks on all; `infra/containerfiles/` per service
-- [ ] `.env.example` at root listing every env var the stack will need (Mongo URI, Redis URL, Qdrant URL, MinIO creds, JWT secret, LLM provider keys) — even ones not used yet
-- [ ] Root `Makefile`/`justfile` wrapping `CLAUDE.md` commands (`make up`, `make gen`, `make down`, `make logs`)
+- [x] Init git repo, `.gitignore` (Go, Python, Node, `gen/`, `.env`)
+- [x] Create top-level groups per `CLAUDE.md` repo layout: `protos/`, `backend-services/`, `ai-services/`, `analysis-services/`, `frontend-services/`, `channels/`, `mcp-servers/`, `domain-packs/`, `packages/`, `infra/`, `docs/`, `scripts/`
+- [x] `protos/buf.yaml` + `protos/buf.gen.yaml` — codegen to Go (`backend-services/gen`); Python targets added in Phase 1 once `ai-services` exists; `buf lint` clean
+- [x] First contract: `protos/backend_services/data_access/v1/ticket.proto` (`CreateTicket`, `GetTicket`, `ListTickets`) + `protos/database/v1/` shared types (`PageRequest`/`PageResponse`, `ErrorDetail`, `TenantScope`, `Money`, `Health`)
+- [x] `backend-services/` Go module: `database/mongo.go` (the ONLY Mongo client), `database/repositories/ticket_repo.go`, `database/migrate/` (ensure indexes), `data-access/ticket/` handler, `data-access/cmd/server/main.go` (Connect server + `Health` RPC) — `go build ./...` and `go vet ./...` pass clean
+- [x] `infra/podman-compose.yml` with `mongo`, `redis:7`, `qdrant/qdrant`, `minio/minio`, healthchecks on all, plus `backend-services`; `infra/containerfiles/backend-services.Containerfile`
+- [x] `.env.example` at root listing every env var the stack will need (Mongo URI, Redis URL, Qdrant URL, MinIO creds, JWT secret, LLM provider keys) — even ones not used yet
+- [x] Root `Makefile` wrapping `CLAUDE.md` commands (`make up`, `make gen`, `make down`, `make logs`, `make lint`, `make build-backend`, `make test-backend`)
 - [ ] Confirm `podman-compose -f infra/podman-compose.yml up -d` brings up all 4 infra containers healthy, and `CreateTicket` over Connect writes a real Mongo document
 
 **Definition of done**: `podman-compose up -d` gives healthy Mongo/Redis/Qdrant/MinIO, and a `grpcurl`/Connect call to `backend-services` `CreateTicket` inserts a ticket into MongoDB — no Python and no frontend yet.
 
-**Notes**: _(fill in as you go)_
+**Notes**:
+- Dev environment (Windows) had no git/go/buf/podman preinstalled — installed via `winget` (Git.Git, GoLang.Go, RedHat.Podman) and `go install` for `buf`/`protoc-gen-go`/`protoc-gen-connect-go`. After any winget install, PATH must be re-read from the registry in a *new* PowerShell process (`[Environment]::GetEnvironmentVariable("Path","Machine")` + `"...User"`) — it does not propagate to already-open shells.
+- Podman on Windows requires a WSL2-backed machine (`podman machine init`). WSL2 itself needs the "Virtual Machine Platform" Windows feature + BIOS virtualization, enabled via an **elevated** `wsl.exe --install --no-distribution` + reboot — this could not be done from a non-interactive/unelevated session. **`podman-compose up` is unverified pending that.**
+- `buf`'s STANDARD lint rules require RPC request/response message names to match the RPC method (`Check`/`CheckRequest`/`CheckResponse`, not `HealthCheckRequest`/`HealthCheckResponse`) — worth remembering before writing the next service's protos.
+- Mongo driver: used `go.mongodb.org/mongo-driver/v2` (not v1) — `mongo.Connect(opts)` takes no context arg, index options come from the `mongo/options` package (`options.Index()`, not `mongo.IndexOptions()`).
 
 ---
 
