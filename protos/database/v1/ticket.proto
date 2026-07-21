@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package database.v1;
+
+option go_package = "servicesphere/backend-services/gen/database/v1;databasev1";
+
+enum TicketPriority {
+  TICKET_PRIORITY_UNSPECIFIED = 0;
+  TICKET_PRIORITY_LOW = 1;
+  TICKET_PRIORITY_MEDIUM = 2;
+  TICKET_PRIORITY_HIGH = 3;
+  TICKET_PRIORITY_URGENT = 4;
+}
+
+enum TicketStatus {
+  TICKET_STATUS_UNSPECIFIED = 0;
+  TICKET_STATUS_OPEN = 1;
+  TICKET_STATUS_IN_PROGRESS = 2;
+  TICKET_STATUS_CLOSED = 3;
+}
+
+// is_collection: true
+// Mongo collection "tickets", owned by backend-services/database/repositories/ticket_repo.go.
+// Only backend-services may read/write this collection directly — every other
+// service reaches it via backend_services.data_access.v1.TicketService.
+message Ticket {
+  string id = 1;
+  string tenant_id = 2;
+  string customer_id = 3;
+  string subject = 4;
+  string description = 5;
+  TicketPriority priority = 6;
+  TicketStatus status = 7;
+  string sla_due_at = 8;   // RFC3339
+  string created_at = 9;   // RFC3339
+}

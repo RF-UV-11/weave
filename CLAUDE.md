@@ -21,8 +21,10 @@ Services are grouped into **repos by concern** and communicate over **gRPC** (Co
 ## Repo layout
 ```
 protos/                   Single source of truth for ALL gRPC/Connect contracts (codegen with buf)
-  backend_services/data_access/   CRUD/data RPCs over Mongo
-  database/                       shared entity/message types
+  database/                       EVERY schema that is stored, one .proto per entity — collection-backed
+                                   messages carry an `is_collection: true` comment (see convention below)
+  backend_services/data_access/   RPC contracts ONLY (Request/Response + service); no entity fields live
+                                   here — they import and reference the matching message in database/v1
   ai_services/                    chat/orchestration RPCs (streaming)
   analysis_services/              analysis/compute RPCs
 backend-services/         GO — the ONLY layer that touches MongoDB
@@ -54,6 +56,13 @@ scripts/new-firm.sh       Scaffolds a new domain-packs/<firm>/ from _template/
 - **`backend-services` is the data trust boundary. Nothing else touches MongoDB.** No Mongo connection string, driver, or query lives anywhere except `backend-services/`. `ai-services`, `analysis-services`, channels, and MCP servers all read/write data by calling a `backend-services` RPC. If you catch yourself importing a Mongo driver outside `backend-services/`, stop — add/extend a data-access RPC instead.
 - **Tools are the trust boundary for the LLM.** The LLM never generates queries, shell commands, or raw RPC. It only calls a typed Python tool function with a Pydantic input/output schema. Tools call `backend-services` (data) or `analysis-services` (compute) or MCP servers over gRPC — never a DB.
 - **`protos/` is the contract source of truth.** Every RPC starts as a `.proto` in `protos/`. Regenerate stubs with `buf generate`; never hand-edit generated code in `gen/`. Wire types come from protobuf; Pydantic mirrors are only for LLM-facing tool schemas and config, not the wire.
+- **Every stored schema lives in `protos/database/v1/`, one entity per file, never inline in a `data_access` proto.** A message that backs a MongoDB collection carries this exact comment immediately above the `message` keyword:
+  ```protobuf
+  // is_collection: true
+  // Mongo collection "<name>", owned by backend-services/database/repositories/<name>_repo.go.
+  message Ticket { ... }
+  ```
+  `data_access` protos import the entity from `database/v1` and define RPC-only messages (`CreateTicketRequest`, etc.) — they never redeclare entity fields. A message in `database/v1` that is *not* collection-backed (e.g. a value type embedded in one) simply omits the flag — don't write `is_collection: false`. See `protos/database/v1/ticket.proto` for the reference example.
 - **Grouped compute stays grouped.** A new calculation/analysis capability is a *module + route* inside `analysis-services`, not a new top-level service. Only promote it to its own service if it needs independent scaling/deploy — and ask first.
 - **Every service** exposes a Connect server with a `Health` RPC (or `grpc.health.v1`), owns its slice of `protos/`, and — for data — a repository + index bootstrap in `backend-services/database/`.
 - **Every agent/tool/RPC hop is traced in Langfuse / OpenTelemetry.** Don't add a new agent node or cross-service RPC without a span.

@@ -190,9 +190,12 @@ servicesphere-ai/
 ├── protos/                            # SINGLE SOURCE OF TRUTH for all contracts (buf codegen)
 │   ├── buf.yaml
 │   ├── buf.gen.yaml                   # generates Go (backend) + Python (ai/analysis) stubs
+│   ├── database/v1/                   # EVERY stored schema, one entity per file (ticket.proto, invoice.proto, ...)
+│   │                                   # plus shared value types (Money, Page, TenantScope, ...).
+│   │                                   # Collection-backed messages carry an `is_collection: true` comment.
 │   ├── backend_services/
-│   │   └── data_access/v1/            # ticket.proto, invoice.proto, crm.proto, chat.proto, ...
-│   ├── database/v1/                   # shared entity messages (Money, Page, TenantScope, ...)
+│   │   └── data_access/v1/            # RPC contracts ONLY — Request/Response + service defs, import the
+│   │                                   # matching entity from database/v1, never redeclare its fields
 │   ├── ai_services/v1/                # chat.proto (server-streaming), planner.proto
 │   └── analysis_services/v1/          # estimation.proto, analytics.proto, ...
 │
@@ -586,11 +589,30 @@ Contracts are **Protocol Buffers in `protos/`**, generated with `buf` into Go an
 - **Errors**: Connect/gRPC status codes (`invalid_argument`, `not_found`, `permission_denied`, ...) carrying a structured detail message: `ErrorDetail{ code: "TICKET_NOT_FOUND", message: "...", details: {...} }`.
 - **Pagination**: cursor-based via request fields `page_token` / `page_size`; responses return `next_page_token`.
 - **Idempotency**: create RPCs for billable resources (invoices, payments) take an `idempotency_key` field (or Connect `idempotency-key` header); `backend-services` dedupes on it.
+- **Entity schemas live in `database/v1`, not in the RPC contract.** Every message that backs a MongoDB collection is defined once in `protos/database/v1/<entity>.proto`, marked with an `is_collection: true` comment, and *referenced* (never redeclared) by the `data_access` proto that exposes RPCs over it. This keeps the stored shape and the wire contract from drifting independently, and makes every collection greppable: `rg "is_collection: true" protos/database`.
 
-Example (Ticket data-access):
+Example (Ticket): the entity lives in `database/v1`, the RPC contract in `data_access/v1` imports it.
+```protobuf
+// protos/database/v1/ticket.proto
+package database.v1;
+
+// is_collection: true
+// Mongo collection "tickets", owned by backend-services/database/repositories/ticket_repo.go.
+message Ticket {
+  string id = 1;
+  string tenant_id = 2;
+  string subject = 3;
+  string priority = 4;
+  string status = 5;             // "open"
+  string sla_due_at = 6;         // RFC3339
+  string created_at = 7;
+}
+```
 ```protobuf
 // protos/backend_services/data_access/v1/ticket.proto
 package backend_services.data_access.v1;
+
+import "database/v1/ticket.proto";
 
 message CreateTicketRequest {
   string tenant_id = 1;
@@ -600,14 +622,12 @@ message CreateTicketRequest {
   string idempotency_key = 5;
 }
 message CreateTicketResponse {
-  string id = 1;
-  string status = 2;            // "open"
-  string sla_due_at = 3;        // RFC3339
+  database.v1.Ticket ticket = 1;
 }
 
 service TicketService {
   rpc CreateTicket(CreateTicketRequest) returns (CreateTicketResponse);
-  rpc GetTicket(GetTicketRequest) returns (Ticket);
+  rpc GetTicket(GetTicketRequest) returns (GetTicketResponse);
   rpc ListTickets(ListTicketsRequest) returns (ListTicketsResponse); // cursor paginated
 }
 ```

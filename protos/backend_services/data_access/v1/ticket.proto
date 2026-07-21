@@ -5,45 +5,23 @@ package backend_services.data_access.v1;
 option go_package = "servicesphere/backend-services/gen/backend_services/data_access/v1;dataaccessv1";
 
 import "database/v1/common.proto";
+import "database/v1/ticket.proto";
 
-enum TicketPriority {
-  TICKET_PRIORITY_UNSPECIFIED = 0;
-  TICKET_PRIORITY_LOW = 1;
-  TICKET_PRIORITY_MEDIUM = 2;
-  TICKET_PRIORITY_HIGH = 3;
-  TICKET_PRIORITY_URGENT = 4;
-}
-
-enum TicketStatus {
-  TICKET_STATUS_UNSPECIFIED = 0;
-  TICKET_STATUS_OPEN = 1;
-  TICKET_STATUS_IN_PROGRESS = 2;
-  TICKET_STATUS_CLOSED = 3;
-}
-
-message Ticket {
-  string id = 1;
-  string tenant_id = 2;
-  string customer_id = 3;
-  string subject = 4;
-  string description = 5;
-  TicketPriority priority = 6;
-  TicketStatus status = 7;
-  string sla_due_at = 8;   // RFC3339
-  string created_at = 9;   // RFC3339
-}
+// RPC contract only — the Ticket entity schema itself lives in
+// protos/database/v1/ticket.proto (see CLAUDE.md: "protos/database holds every
+// collection-backed schema; data_access protos hold only RPC request/response").
 
 message CreateTicketRequest {
   string tenant_id = 1;
   string customer_id = 2;
   string subject = 3;
   string description = 4;
-  TicketPriority priority = 5;
+  database.v1.TicketPriority priority = 5;
   string idempotency_key = 6;
 }
 
 message CreateTicketResponse {
-  Ticket ticket = 1;
+  database.v1.Ticket ticket = 1;
 }
 
 message GetTicketRequest {
@@ -52,7 +30,7 @@ message GetTicketRequest {
 }
 
 message GetTicketResponse {
-  Ticket ticket = 1;
+  database.v1.Ticket ticket = 1;
 }
 
 message ListTicketsRequest {
@@ -62,7 +40,7 @@ message ListTicketsRequest {
 }
 
 message ListTicketsResponse {
-  repeated Ticket tickets = 1;
+  repeated database.v1.Ticket tickets = 1;
   database.v1.PageResponse page = 2;
 }
 

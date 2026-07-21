@@ -17,11 +17,11 @@ import (
 	"servicesphere/backend-services/database/repositories"
 )
 
-var slaByPriority = map[dataaccessv1.TicketPriority]time.Duration{
-	dataaccessv1.TicketPriority_TICKET_PRIORITY_URGENT: 4 * time.Hour,
-	dataaccessv1.TicketPriority_TICKET_PRIORITY_HIGH:   24 * time.Hour,
-	dataaccessv1.TicketPriority_TICKET_PRIORITY_MEDIUM: 3 * 24 * time.Hour,
-	dataaccessv1.TicketPriority_TICKET_PRIORITY_LOW:    7 * 24 * time.Hour,
+var slaByPriority = map[databasev1.TicketPriority]time.Duration{
+	databasev1.TicketPriority_TICKET_PRIORITY_URGENT: 4 * time.Hour,
+	databasev1.TicketPriority_TICKET_PRIORITY_HIGH:   24 * time.Hour,
+	databasev1.TicketPriority_TICKET_PRIORITY_MEDIUM: 3 * 24 * time.Hour,
+	databasev1.TicketPriority_TICKET_PRIORITY_LOW:    7 * 24 * time.Hour,
 }
 
 type Handler struct {
@@ -40,8 +40,8 @@ func (h *Handler) CreateTicket(ctx context.Context, req *connect.Request[dataacc
 	}
 
 	priority := msg.Priority
-	if priority == dataaccessv1.TicketPriority_TICKET_PRIORITY_UNSPECIFIED {
-		priority = dataaccessv1.TicketPriority_TICKET_PRIORITY_MEDIUM
+	if priority == databasev1.TicketPriority_TICKET_PRIORITY_UNSPECIFIED {
+		priority = databasev1.TicketPriority_TICKET_PRIORITY_MEDIUM
 	}
 	now := time.Now().UTC()
 
@@ -52,7 +52,7 @@ func (h *Handler) CreateTicket(ctx context.Context, req *connect.Request[dataacc
 		Subject:        msg.Subject,
 		Description:    msg.Description,
 		Priority:       priority.String(),
-		Status:         dataaccessv1.TicketStatus_TICKET_STATUS_OPEN.String(),
+		Status:         databasev1.TicketStatus_TICKET_STATUS_OPEN.String(),
 		SLADueAt:       now.Add(slaByPriority[priority]),
 		CreatedAt:      now,
 		IdempotencyKey: msg.IdempotencyKey,
@@ -91,7 +91,7 @@ func (h *Handler) ListTickets(ctx context.Context, req *connect.Request[dataacce
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	tickets := make([]*dataaccessv1.Ticket, len(docs))
+	tickets := make([]*databasev1.Ticket, len(docs))
 	for i, d := range docs {
 		tickets[i] = toProto(d)
 	}
@@ -101,15 +101,15 @@ func (h *Handler) ListTickets(ctx context.Context, req *connect.Request[dataacce
 	}), nil
 }
 
-func toProto(d repositories.TicketDoc) *dataaccessv1.Ticket {
-	return &dataaccessv1.Ticket{
+func toProto(d repositories.TicketDoc) *databasev1.Ticket {
+	return &databasev1.Ticket{
 		Id:          d.ID,
 		TenantId:    d.TenantID,
 		CustomerId:  d.CustomerID,
 		Subject:     d.Subject,
 		Description: d.Description,
-		Priority:    dataaccessv1.TicketPriority(dataaccessv1.TicketPriority_value[d.Priority]),
-		Status:      dataaccessv1.TicketStatus(dataaccessv1.TicketStatus_value[d.Status]),
+		Priority:    databasev1.TicketPriority(databasev1.TicketPriority_value[d.Priority]),
+		Status:      databasev1.TicketStatus(databasev1.TicketStatus_value[d.Status]),
 		SlaDueAt:    d.SLADueAt.Format(time.RFC3339),
 		CreatedAt:   d.CreatedAt.Format(time.RFC3339),
 	}
