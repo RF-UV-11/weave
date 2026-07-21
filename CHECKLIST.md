@@ -18,7 +18,7 @@ Legend: `[ ]` not started · `[~]` in progress / partial · `[x]` done and wired
 - [~] `buf.yaml` + `buf.gen.yaml` generating stubs — Go done; Python targets land in Phase 1 with `ai-services`
 - [~] `buf lint` clean and passing; `buf breaking` + CI wiring comes with Phase 10 CI/CD
 - [x] `protos/database/v1/` shared value types (`PageRequest`/`PageResponse`, `ErrorDetail`, `TenantScope`, `Money`, `Health`)
-- [x] `is_collection: true` convention adopted — every collection-backed entity lives in `protos/database/v1/<entity>.proto`, `data_access` protos import it and hold RPC-only messages (reference: `protos/database/v1/ticket.proto`)
+- [x] `is_collection: true` convention adopted — every collection-backed entity lives in `protos/database/v1/<entity>.proto`, `data_access` protos import it and hold RPC-only messages, and the entity's first field is `_id` (Mongo's real primary key, Go field `XId`) (reference: `protos/database/v1/ticket.proto`)
 - [~] `protos/database/v1/` entity schemas + `protos/backend_services/data_access/v1/` RPC contracts — `ticket` done, rest in Phase 8 (see §2.1)
 - [ ] `protos/ai_services/v1/chat.proto` (server-streaming)
 - [ ] `protos/analysis_services/v1/` capabilities
@@ -37,10 +37,10 @@ Legend: `[ ]` not started · `[~]` in progress / partial · `[x]` done and wired
 ## 2. Service groups
 
 ### 2.1 `backend-services` (Go) — the only DB tier
-Data-access domains (proto + repository + index bootstrap + Connect handler + `Health`):
-- [x] `database/mongo.go` (single Mongo client — the only DB creds in the repo)
-- [x] `data-access/cmd/server` (Connect server, `Health` RPC) — builds and vets clean; not yet run against a live Mongo instance
-- [x] **ticket** — `CreateTicket`, `GetTicket`, `ListTickets` (code complete; runtime-unverified pending Podman)
+RPC-per-collection layout (proto entity + mongodb/<collection>.go + rpc_services/<collection>/ + index bootstrap) — see `backend-services/CLAUDE.md`:
+- [x] `mongodb/initialize.go` (single Mongo client + `DbType`/`Queries`/`Db` — the only DB creds in the repo)
+- [x] `main.go` at module root (Connect server, `Health` RPC via `health/`) — builds and vets clean; not yet run against a live Mongo instance
+- [x] **ticket** — `mongodb/ticket.go` + `rpc_services/ticket/`: `CreateTicket`, `GetTicket`, `ListTickets` (code complete; runtime-unverified pending Podman). Reference example for the `_id`-as-primary-key convention.
 - [ ] **chat** — `AppendMessage`, `GetSession`, `WriteMemory`, `GetPreferences`
 - [ ] **knowledge-base** — `ListArticles`, `UpsertArticle`
 - [ ] **calendar** — `GetAvailability`, `BookMeeting`

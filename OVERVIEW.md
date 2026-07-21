@@ -199,19 +199,22 @@ servicesphere-ai/
 │   ├── ai_services/v1/                # chat.proto (server-streaming), planner.proto
 │   └── analysis_services/v1/          # estimation.proto, analytics.proto, ...
 │
-├── backend-services/                  # GO — the ONLY tier that touches MongoDB
-│   ├── data-access/
-│   │   ├── cmd/server/main.go         # THE backend gRPC/Connect server entrypoint
-│   │   ├── ticket/  invoice/  crm/  project/  auth/  chat/  ...   # one handler pkg per domain
-│   │   └── router.go                  # registers all Connect handlers
-│   ├── database/
-│   │   ├── mongo.go                   # single Mongo client (only DB creds in the repo)
-│   │   ├── repositories/              # one repo per collection
-│   │   └── migrate/                   # index + bootstrap "migrations" (Mongo is schemaless)
-│   ├── internal/                      # auth interceptor, tracing, tenant scoping, errors
+├── backend-services/                  # GO — the ONLY tier that touches MongoDB (see backend-services/CLAUDE.md)
+│   ├── main.go                        # THE backend Connect/gRPC server entrypoint, at module root
+│   ├── configs/                       # env-based config (Vars)
+│   ├── mongodb/                       # RPC-per-collection: the only package that touches Mongo
+│   │   ├── initialize.go              # Queries interface, DbType, package-level Db, InitDatabase()
+│   │   ├── collections.go             # ColNames — the single registry of collection name strings
+│   │   ├── indexes.go                 # index bootstrap (Mongo is schemaless, so this is "migrations")
+│   │   ├── health.go                  # periodic Mongo ping loop -> Healthy
+│   │   └── ticket.go  invoice.go  ...  # one file per collection: interface + DbType methods
+│   ├── rpc_services/
+│   │   └── ticket/  invoice/  ...     # one pkg per collection: server.go + routehandler.go (thin,
+│   │                                   # delegates to mongodb/ only — no business logic here)
+│   ├── health/                        # thin Connect adapter for the shared HealthService
 │   ├── gen/                           # generated Go stubs (do not hand-edit)
 │   ├── go.mod
-│   └── README.md
+│   └── CLAUDE.md                      # this service's own house rules + "adding a collection" steps
 │
 ├── ai-services/                       # PY — LangGraph orchestration
 │   ├── server/                        # Connect chat server (streaming) = core entrypoint
@@ -303,7 +306,7 @@ Three backend concerns, three groups. Frontend and channels sit in front of them
 
 ### 5.1 `backend-services` (Go) — the data tier
 
-The **only** tier with MongoDB credentials. One Connect/gRPC server (`data-access/cmd/server`) registers a handler package per business domain. Each domain owns a set of Mongo collections and a repository. When any other service needs data, it calls one of these RPCs.
+The **only** tier with MongoDB credentials. One Connect/gRPC server (`backend-services/main.go`) registers one RPC service per collection, following the RPC-per-collection layout in `backend-services/CLAUDE.md`: `mongodb/<collection>.go` owns the Mongo access, `rpc_services/<collection>/` is the thin Connect handler. When any other service needs data, it calls one of these RPCs.
 
 | Domain (data-access pkg) | Responsibility | Example RPCs | Owns Collections |
 |---|---|---|---|
@@ -569,7 +572,7 @@ Representative documents (fields shown illustratively; `_id` is a string ULID):
   "created_at": "…" }
 ```
 
-**Indexing notes** (created by `backend-services/database/migrate/`):
+**Indexing notes** (created by `backend-services/mongodb/indexes.go`):
 - Compound `(tenant_id, _id)` on every collection; every query is tenant-scoped first.
 - `(tenant_id, status)` on `tickets`; a partial index `WHERE status != 'closed'` for the hot support queue.
 - `(tenant_id, customer_id, created_at desc)` on high-read list views (`invoices`, `tickets`).
@@ -589,7 +592,7 @@ Contracts are **Protocol Buffers in `protos/`**, generated with `buf` into Go an
 - **Errors**: Connect/gRPC status codes (`invalid_argument`, `not_found`, `permission_denied`, ...) carrying a structured detail message: `ErrorDetail{ code: "TICKET_NOT_FOUND", message: "...", details: {...} }`.
 - **Pagination**: cursor-based via request fields `page_token` / `page_size`; responses return `next_page_token`.
 - **Idempotency**: create RPCs for billable resources (invoices, payments) take an `idempotency_key` field (or Connect `idempotency-key` header); `backend-services` dedupes on it.
-- **Entity schemas live in `database/v1`, not in the RPC contract.** Every message that backs a MongoDB collection is defined once in `protos/database/v1/<entity>.proto`, marked with an `is_collection: true` comment, and *referenced* (never redeclared) by the `data_access` proto that exposes RPCs over it. This keeps the stored shape and the wire contract from drifting independently, and makes every collection greppable: `rg "is_collection: true" protos/database`.
+- **Entity schemas live in `database/v1`, not in the RPC contract.** Every message that backs a MongoDB collection is defined once in `protos/database/v1/<entity>.proto`, marked with an `is_collection: true` comment, and *referenced* (never redeclared) by the `data_access` proto that exposes RPCs over it. This keeps the stored shape and the wire contract from drifting independently, and makes every collection greppable: `rg "is_collection: true" protos/database`. Its first field is always `_id` (Mongo's real primary key) so the entity is stored, via `UseJSONStructTags`, exactly as-is — no separate DTO. The one cost: protoc-gen-go can't emit `Id` as the Go name for a leading-underscore field, so it becomes `XId` (`t.XId`, `t.GetXId()`) — expected, not a bug, and `// buf:lint:ignore FIELD_LOWER_SNAKE_CASE` silences the style warning.
 
 Example (Ticket): the entity lives in `database/v1`, the RPC contract in `data_access/v1` imports it.
 ```protobuf
@@ -597,9 +600,10 @@ Example (Ticket): the entity lives in `database/v1`, the RPC contract in `data_a
 package database.v1;
 
 // is_collection: true
-// Mongo collection "tickets", owned by backend-services/database/repositories/ticket_repo.go.
+// Mongo collection "tickets", owned by backend-services/mongodb/ticket.go.
 message Ticket {
-  string id = 1;
+  // buf:lint:ignore FIELD_LOWER_SNAKE_CASE
+  string _id = 1;               // Mongo's real primary key -> Go field XId
   string tenant_id = 2;
   string subject = 3;
   string priority = 4;

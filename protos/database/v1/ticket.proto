@@ -20,11 +20,19 @@ enum TicketStatus {
 }
 
 // is_collection: true
-// Mongo collection "tickets", owned by backend-services/database/repositories/ticket_repo.go.
-// Only backend-services may read/write this collection directly — every other
-// service reaches it via backend_services.data_access.v1.TicketService.
+// Mongo collection "tickets", owned by backend-services/mongodb/ticket.go. This
+// message is stored as-is (BSON via its json struct tags) — it IS the document
+// shape, not a separate DTO. Only backend-services may read/write this
+// collection directly — every other service reaches it via
+// backend_services.data_access.v1.TicketService.
 message Ticket {
-  string id = 1;
+  // Mongo's real primary key (ULID-based, "tkt_..."). Every is_collection
+  // entity's first field is `_id`, not `id` — protoc-gen-go emits Go field
+  // `XId` for it (the leading underscore forces that name), but it's what
+  // makes UseJSONStructTags map straight onto Mongo's native _id, so no
+  // separate unique index is needed for lookups. See root CLAUDE.md.
+  // buf:lint:ignore FIELD_LOWER_SNAKE_CASE
+  string _id = 1;
   string tenant_id = 2;
   string customer_id = 3;
   string subject = 4;
@@ -33,4 +41,7 @@ message Ticket {
   TicketStatus status = 7;
   string sla_due_at = 8;   // RFC3339
   string created_at = 9;   // RFC3339
+  // Internal bookkeeping for CreateTicket dedup — not meant to be read by
+  // clients; response mapping may choose to omit it.
+  string idempotency_key = 10;
 }

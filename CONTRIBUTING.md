@@ -14,7 +14,7 @@ Channels live in `channels/<name>/` (and full UI surfaces in `frontend-services/
 New MCP servers live in `mcp-servers/<name>/` with `server.py`, `resources.py`, `tools.py`, `prompts.py`, and their own `README.md` documenting the contract. See `docs/architecture/OVERVIEW.md` §8. When your MCP server needs firm data, it calls a `backend-services` RPC — it must not open a database connection.
 
 ### 4. Add a data-access domain (`backend-services`, Go)
-New persisted data means: the entity schema in `protos/database/v1/<entity>.proto`, marked with an `is_collection: true` comment above the `message`; a `.proto` in `protos/backend_services/data_access/v1/` with RPC-only Request/Response messages that import and reference that entity (never redeclare its fields); a repository + index bootstrap in `backend-services/database/`; and a Connect handler. This is the *only* place a MongoDB driver is allowed. Regenerate stubs with `buf generate`. See `protos/database/v1/ticket.proto` for the reference pattern.
+New persisted data follows the RPC-per-collection layout in `backend-services/CLAUDE.md`: the entity schema in `protos/database/v1/<entity>.proto` (marked `is_collection: true`, first field `_id`); a `.proto` in `protos/backend_services/data_access/v1/` with RPC-only Request/Response messages that import and reference that entity (never redeclare its fields); `backend-services/mongodb/<entity>.go` (the only Mongo access + its index block in `mongodb/indexes.go`); and `backend-services/rpc_services/<entity>/` (`server.go` + a thin `routehandler.go`). This is the *only* place a MongoDB driver is allowed. Regenerate stubs with `buf generate`. See `protos/database/v1/ticket.proto` and `backend-services/mongodb/ticket.go` for the reference pattern.
 
 ### 5. Add an analysis/compute capability (`analysis-services`, Python)
 A calculation or analysis capability is a **module + route inside the one `analysis-services` server** — not a new top-level service. Add a `.proto` in `protos/analysis_services/v1/`, a module folder, and register its route on the common server. If your capability needs firm data, it calls `backend-services`. Only propose promoting a module to its own service if profiling shows it needs independent scaling.
@@ -31,7 +31,7 @@ Design conventions (color tokens, typography, the Live Signal Path trace element
 - [ ] Tests pass: `go test ./...` in `backend-services/`, `pytest` in the relevant Python service dir, `pnpm test` for frontend
 - [ ] Lint passes: `golangci-lint run` for Go, `ruff check .` for Python, `pnpm lint && pnpm typecheck` for frontend
 - [ ] No new MongoDB access outside `backend-services/` — data reaches other tiers only via RPC
-- [ ] If you added a collection, there's a repository + index bootstrap in `backend-services/database/migrate/`, and (if tenant-scoped) a `tenant_id` field + index
+- [ ] If you added a collection, there's a `mongodb/<entity>.go` + an index block in `mongodb/indexes.go`, and (if tenant-scoped) a `tenant_id` field + index
 - [ ] If you touched a design surface, it matches `DESIGN.md` — no ad hoc colors or fonts outside the token table
 - [ ] If your change affects the architecture in `docs/architecture/OVERVIEW.md`, update that doc in the same PR
 - [ ] Update `CHECKLIST.md` (and the relevant `PLAN.md` checkbox / `LEARNING.md` status) for anything you completed

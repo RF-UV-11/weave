@@ -27,10 +27,15 @@ protos/                   Single source of truth for ALL gRPC/Connect contracts 
                                    here — they import and reference the matching message in database/v1
   ai_services/                    chat/orchestration RPCs (streaming)
   analysis_services/              analysis/compute RPCs
-backend-services/         GO — the ONLY layer that touches MongoDB
-  data-access/            Connect/gRPC servers, one package per domain (tickets, invoices, ...)
-  database/               Mongo client, collections, repositories, index bootstrap
-  internal/               shared Go: auth interceptor, tracing, middleware
+backend-services/         GO — the ONLY layer that touches MongoDB (see backend-services/CLAUDE.md)
+  main.go                 the server entrypoint, at module root (not cmd/)
+  configs/                env-based config, single source of Vars
+  mongodb/                RPC-per-collection: <collection>.go (interface + DbType methods, the only
+                           Mongo access), initialize.go (DbType/Queries/Db), collections.go (ColNames),
+                           indexes.go (index bootstrap), health.go (ping loop)
+  rpc_services/<collection>/  server.go (embeds Unimplemented*Handler) + routehandler.go (delegates
+                           to mongodb/ only — no business logic here)
+  health/                 thin Connect adapter for the shared HealthService, reads mongodb.Healthy
   gen/                    generated Go stubs from protos/
 ai-services/              PY — LangGraph orchestration; calls backend-services over gRPC for all data
   server/                 common Connect server = the chat entrypoint (streaming)
@@ -56,15 +61,19 @@ scripts/new-firm.sh       Scaffolds a new domain-packs/<firm>/ from _template/
 - **`backend-services` is the data trust boundary. Nothing else touches MongoDB.** No Mongo connection string, driver, or query lives anywhere except `backend-services/`. `ai-services`, `analysis-services`, channels, and MCP servers all read/write data by calling a `backend-services` RPC. If you catch yourself importing a Mongo driver outside `backend-services/`, stop — add/extend a data-access RPC instead.
 - **Tools are the trust boundary for the LLM.** The LLM never generates queries, shell commands, or raw RPC. It only calls a typed Python tool function with a Pydantic input/output schema. Tools call `backend-services` (data) or `analysis-services` (compute) or MCP servers over gRPC — never a DB.
 - **`protos/` is the contract source of truth.** Every RPC starts as a `.proto` in `protos/`. Regenerate stubs with `buf generate`; never hand-edit generated code in `gen/`. Wire types come from protobuf; Pydantic mirrors are only for LLM-facing tool schemas and config, not the wire.
-- **Every stored schema lives in `protos/database/v1/`, one entity per file, never inline in a `data_access` proto.** A message that backs a MongoDB collection carries this exact comment immediately above the `message` keyword:
+- **Every stored schema lives in `protos/database/v1/`, one entity per file, never inline in a `data_access` proto.** A message that backs a MongoDB collection carries this exact comment immediately above the `message` keyword, and its first field is always `_id` (Mongo's real primary key, ULID-based) — not `id`:
   ```protobuf
   // is_collection: true
-  // Mongo collection "<name>", owned by backend-services/database/repositories/<name>_repo.go.
-  message Ticket { ... }
+  // Mongo collection "<name>", owned by backend-services/mongodb/<name>.go.
+  message Ticket {
+    // buf:lint:ignore FIELD_LOWER_SNAKE_CASE
+    string _id = 1;
+    ...
+  }
   ```
-  `data_access` protos import the entity from `database/v1` and define RPC-only messages (`CreateTicketRequest`, etc.) — they never redeclare entity fields. A message in `database/v1` that is *not* collection-backed (e.g. a value type embedded in one) simply omits the flag — don't write `is_collection: false`. See `protos/database/v1/ticket.proto` for the reference example.
+  `_id` makes Mongo's own primary key the entity's ID — no separate app-level unique index needed. The tradeoff: protoc-gen-go can't emit `Id` as the Go field name for a leading-underscore field, so it becomes `XId` (`t.XId`, `t.GetXId()`) — that's expected, not a bug. `data_access` protos import the entity from `database/v1` and define RPC-only messages (`CreateTicketRequest`, etc., whose own `id`/other fields are normal — this rule only applies to the entity's primary key) — they never redeclare entity fields. A message in `database/v1` that is *not* collection-backed (e.g. a value type embedded in one) simply omits the flag and the `_id` field — don't write `is_collection: false`. See `protos/database/v1/ticket.proto` and `backend-services/mongodb/ticket.go` for the reference example.
 - **Grouped compute stays grouped.** A new calculation/analysis capability is a *module + route* inside `analysis-services`, not a new top-level service. Only promote it to its own service if it needs independent scaling/deploy — and ask first.
-- **Every service** exposes a Connect server with a `Health` RPC (or `grpc.health.v1`), owns its slice of `protos/`, and — for data — a repository + index bootstrap in `backend-services/database/`.
+- **Every service** exposes a Connect server with a `Health` RPC (or `grpc.health.v1`), owns its slice of `protos/`, and — for data — a `mongodb/<collection>.go` + index block in `backend-services/mongodb/`.
 - **Every agent/tool/RPC hop is traced in Langfuse / OpenTelemetry.** Don't add a new agent node or cross-service RPC without a span.
 - **API/contract conventions**: proto packages are versioned (`...v1`). Errors use Connect/gRPC status codes carrying a structured `ErrorDetail{code, message, details}`. List RPCs are cursor-paginated (`page_token`/`page_size`). RPCs that create billable resources (invoices, payments) take an `idempotency_key`.
 - **RBAC is re-checked at the tool layer**, not just at the edge — a tool like `generateInvoice` must independently verify the caller's role before executing, since the LLM's intent to call it isn't authorization.
@@ -79,7 +88,7 @@ scripts/new-firm.sh       Scaffolds a new domain-packs/<firm>/ from _template/
 podman-compose -f infra/podman-compose.yml up -d        # full local stack: mongo, redis, qdrant, minio, langfuse, services
 podman-compose -f infra/podman-compose.yml up -d <svc>  # bring up one service + its deps
 buf lint && buf generate                                # validate protos + regenerate Go/Python stubs
-go run ./backend-services/data-access/cmd/server        # run the Go data-access server locally
+go run ./backend-services                                # run the Go data-access server locally
 python -m ai_services.server                            # run the AI orchestration server locally
 python -m analysis_services.server                      # run the grouped compute server locally
 pnpm dev                                                # frontend, from frontend-services/web
