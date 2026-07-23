@@ -15,11 +15,11 @@ Legend: `[ ]` not started · `[~]` in progress / partial · `[x]` done and wired
 ## 1. Foundations & cross-cutting
 
 ### Contracts (`protos/` + buf)
-- [~] `buf.yaml` + `buf.gen.yaml` generating stubs — Go done; Python targets land in Phase 1 with `ai-services`
-- [~] `buf lint` clean and passing; `buf breaking` + CI wiring comes with Phase 10 CI/CD
+- [~] `buf.yaml` + `buf.gen.yaml` generating stubs — Go done; Python targets land in Phase 2 with `ai-services`
+- [~] `buf lint` clean and passing; `buf breaking` + CI wiring comes with Phase 13 CI/CD
 - [x] `protos/database/v1/` shared value types (`PageRequest`/`PageResponse`, `ErrorDetail`, `TenantScope`, `Money`, `Health`)
 - [x] `is_collection: true` convention adopted — every collection-backed entity lives in `protos/database/v1/<entity>.proto`, `data_access` protos import it and hold RPC-only messages, and the entity's first field is `_id` (Mongo's real primary key, Go field `XId`) (reference: `protos/database/v1/ticket.proto`)
-- [~] `protos/database/v1/` entity schemas + `protos/backend_services/data_access/v1/` RPC contracts — `ticket` done, rest in Phase 8 (see §2.1)
+- [~] `protos/database/v1/` entity schemas + `protos/backend_services/data_access/v1/` RPC contracts — `ticket` done, core domains (`chat`/`knowledge-base`/`calendar`/`auth`) in Phase 1, rest in Phase 10 (see §2.1)
 - [ ] `protos/ai_services/v1/chat.proto` (server-streaming)
 - [ ] `protos/analysis_services/v1/` capabilities
 
@@ -121,7 +121,7 @@ RPC-per-collection layout (proto entity + mongodb/<collection>.go + rpc_services
 Pre-1.0 (where this project lives while the reference implementation is being built):
 - **MINOR** (`0.x.0`) — bump when a `PLAN.md` phase reaches its "Definition of done". One phase ≈ one minor release.
 - **PATCH** (`0.x.y`) — fixes, doc updates, and additive work within a phase that doesn't complete a new phase.
-- Stay on `0.x` until Phase 14 (open-source release readiness); tag **`v1.0.0`** when the full reference stack + both domain packs run end-to-end and the OSS surface is complete.
+- Stay on `0.x` until Phase 13 (deployment + open-source release readiness); tag **`v1.0.0`** when the full reference stack (including the frontend) + both domain packs run end-to-end and the OSS surface is complete.
 
 Post-1.0:
 - **MAJOR** — a breaking change to a published contract in `protos/` (guarded by `buf breaking`), or a break in the domain-pack (`business.yaml`) schema.
@@ -139,20 +139,19 @@ Phase → planned version:
 | Phase | Milestone | Planned version |
 |---|---|---|
 | 0 | Contracts + Go/Mongo data tier, `CreateTicket` writes to Mongo | `v0.1.0` |
-| 1 | Streaming chat RPC end to end (Ollama) | `v0.2.0` |
-| 2 | Tool calling → `backend-services` (real ticket via tool) | `v0.3.0` |
-| 3 | RAG with citations | `v0.4.0` |
-| 4 | Memory across sessions | `v0.5.0` |
-| 5 | First MCP server + client (Calendar) | `v0.6.0` |
+| 1 | Backend core domains (`chat`, `knowledge-base`, `calendar`, `auth`) | `v0.2.0` |
+| 2 | AI Services core: streaming chat, tool calling, Streamlit dev tool | `v0.3.0` |
+| 3 | Channels (web widget, WhatsApp, Slack) | `v0.4.0` |
+| 4 | RAG with citations | `v0.5.0` |
+| 5 | Memory across sessions | `v0.6.0` |
 | 6 | Multi-agent Planner routing | `v0.7.0` |
 | 7 | Grouped compute (`analysis-services`) | `v0.8.0` |
-| 8 | Production contracts + auth (all domains, RBAC) | `v0.9.0` |
-| 9 | Monitoring & evaluation | `v0.10.0` |
-| 10 | Podman → Kubernetes deployment | `v0.11.0` |
-| 11 | Domain packs (generalized core) | `v0.12.0` |
-| 12 | Multi-tenancy (isolation test passing) | `v0.13.0` |
-| 13 | Channel adapters (Streamlit, widget, WhatsApp) | `v0.14.0` |
-| 14 | OSS release readiness | **`v1.0.0`** |
+| 8 | First MCP server + client (Calendar) | `v0.9.0` |
+| 9 | Observability & evaluation | `v0.10.0` |
+| 10 | Backend completion (remaining 8 domains) + RBAC everywhere | `v0.11.0` |
+| 11 | Domain packs + multi-tenancy (isolation test passing) | `v0.12.0` |
+| 12 | Frontend — Next.js web app | `v0.13.0` |
+| 13 | Deployment (Kubernetes) + OSS release readiness | **`v1.0.0`** |
 
 ---
 

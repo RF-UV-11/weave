@@ -66,7 +66,7 @@ Status: `[ ]` not yet written · `[~]` stub exists, needs the full template · `
 | Go data-access services (`connect-go`) | `docs/roadmap/00-contracts-data/03-go-data-access.md` | [ ] |
 | MongoDB modeling & the single-DB-tier boundary | `docs/roadmap/00-contracts-data/04-mongodb-data-tier.md` | [ ] |
 
-### Module 1 — LLM & Prompting Foundations *(Phase 1)*
+### Module 1 — LLM & Prompting Foundations *(Phase 2)*
 | Topic | Doc path | Status |
 |---|---|---|
 | LLM fundamentals (tokens, context window, temperature, sampling) | `docs/roadmap/01-llm-foundations/01-llm-fundamentals.md` | [ ] |
@@ -75,6 +75,9 @@ Status: `[ ]` not yet written · `[~]` stub exists, needs the full template · `
 | Streaming responses (Connect server-streaming, token-by-token) | `docs/roadmap/01-llm-foundations/04-streaming-responses.md` | [ ] |
 
 ### Module 2 — Tool & Function Calling *(Phase 2)*
+<!-- Modules 1 and 2 both land in Phase 2 ("AI Services Core") now — the old
+     Basic Chat / Tool Calling phases merged when the frontend moved out. -->
+
 | Topic | Doc path | Status |
 |---|---|---|
 | Function calling fundamentals | `docs/roadmap/02-tool-calling/01-function-calling.md` | [ ] |
@@ -82,7 +85,7 @@ Status: `[ ]` not yet written · `[~]` stub exists, needs the full template · `
 | Tool → `backend-services` RPC (the data boundary) | `docs/roadmap/02-tool-calling/03-tool-to-data-rpc.md` | [ ] |
 | External API calling (weather/currency/news, routing decision) | `docs/roadmap/02-tool-calling/04-external-api-calling.md` | [ ] |
 
-### Module 3 — Retrieval-Augmented Generation *(Phase 3)*
+### Module 3 — Retrieval-Augmented Generation *(Phase 4)*
 | Topic | Doc path | Status |
 |---|---|---|
 | Embeddings | `docs/roadmap/03-rag/01-embeddings.md` | [ ] |
@@ -92,7 +95,7 @@ Status: `[ ]` not yet written · `[~]` stub exists, needs the full template · `
 | Re-ranking | `docs/roadmap/03-rag/05-reranking.md` | [ ] |
 | RAG evaluation (recall@k, faithfulness) | `docs/roadmap/03-rag/06-rag-evaluation.md` | [ ] |
 
-### Module 4 — Memory & Conversation State *(Phase 4)*
+### Module 4 — Memory & Conversation State *(Phase 5)*
 | Topic | Doc path | Status |
 |---|---|---|
 | Conversation state management | `docs/roadmap/04-memory/01-conversation-state.md` | [ ] |
@@ -100,7 +103,7 @@ Status: `[ ]` not yet written · `[~]` stub exists, needs the full template · `
 | Long-term & semantic memory | `docs/roadmap/04-memory/03-long-term-semantic-memory.md` | [ ] |
 | User preferences | `docs/roadmap/04-memory/04-user-preferences.md` | [ ] |
 
-### Module 5 — Model Context Protocol (MCP) *(Phase 5)*
+### Module 5 — Model Context Protocol (MCP) *(Phase 8)*
 | Topic | Doc path | Status |
 |---|---|---|
 | MCP protocol fundamentals (initialize, transports) | `docs/roadmap/05-mcp/01-mcp-protocol.md` | [ ] |
@@ -123,7 +126,11 @@ Status: `[ ]` not yet written · `[~]` stub exists, needs the full template · `
 | Modular monolith vs. microservice: when to group | `docs/roadmap/07-grouped-compute/02-when-to-group.md` | [ ] |
 | Compute modules that call back for data | `docs/roadmap/07-grouped-compute/03-compute-calling-data.md` | [ ] |
 
-### Module 8 — Production Contracts & Auth *(Phase 8)*
+### Module 8 — Production Contracts & Auth *(Phase 10)*
+<!-- Auth first appears in Phase 1 (backend core domains); this module's docs
+     are best written once RBAC is wired everywhere and re-checked at the tool
+     layer too, which is Phase 10 ("Backend Completion"). -->
+
 | Topic | Doc path | Status |
 |---|---|---|
 | Service-group architecture & the data trust boundary | `docs/roadmap/08-production-contracts/01-service-group-architecture.md` | [ ] |
@@ -138,14 +145,19 @@ Status: `[ ]` not yet written · `[~]` stub exists, needs the full template · `
 | Infra monitoring (OpenTelemetry across Go + Python) | `docs/roadmap/09-observability/02-opentelemetry.md` | [ ] |
 | Offline & online evaluation | `docs/roadmap/09-observability/03-evaluation.md` | [ ] |
 
-### Module 10 — Deployment & Infrastructure *(Phase 10)*
+### Module 10 — Deployment & Infrastructure *(Phase 13)*
 | Topic | Doc path | Status |
 |---|---|---|
 | Podman & podman-compose (Containerfiles, rootless) | `docs/roadmap/10-deployment/01-podman-compose.md` | [ ] |
 | Kubernetes (Deployments, HPA, Kustomize, `podman generate kube`) | `docs/roadmap/10-deployment/02-kubernetes.md` | [ ] |
 | CI/CD pipelines (buf lint/breaking, go test, pytest, image build) | `docs/roadmap/10-deployment/03-ci-cd.md` | [ ] |
 
-### Module 11 — Generalization: Domain Packs, Multi-Tenancy & Channels *(Phases 11–14)*
+### Module 11 — Generalization: Domain Packs, Multi-Tenancy & Channels *(Phases 3, 11–13)*
+<!-- Channels now build in Phase 3 (right after ai-services core) rather than
+     late — the "channel adapter pattern" topic can be written as soon as
+     Phase 3 is done, even though domain packs/multi-tenancy (Phase 11),
+     design systems (Phase 12, the frontend), and OSS structure (Phase 13)
+     land later. Topics didn't move modules, only the phases they're tied to. -->
 | Topic | Doc path | Status |
 |---|---|---|
 | Config-driven domain design | `docs/roadmap/11-generalization/01-domain-pack-design.md` | [ ] |
@@ -170,4 +182,4 @@ If a phase's build reveals a topic isn't covered above (e.g. you hit a real conc
 
 ## 4. Reading order (if learning end-to-end rather than building)
 
-Modules 0 → 11 in order is the intended reading path — it matches `PLAN.md`'s phase order and each module assumes the previous ones. Module 0 (contracts + the Go/Mongo data tier) comes first deliberately: every later module reaches data through it, so the boundary has to be understood before the AI layers that depend on it. Within a module, read topics top to bottom. `docs/architecture/OVERVIEW.md` is the reference for *system design* at any point; this file plus `docs/roadmap/**` is the reference for *learning the underlying concepts* — read OVERVIEW.md's relevant section first for context, then the matching topic doc here for depth.
+Modules 0 → 11 in order is the intended *conceptual* reading path — each module still assumes the previous ones, even though `PLAN.md`'s build phases no longer map to modules 1:1 in strict ascending order (building is module-by-module by service group, with `frontend-services/web` deliberately last; learning stays concept-by-concept). Module 0 (contracts + the Go/Mongo data tier) comes first deliberately: every later module reaches data through it, so the boundary has to be understood before the AI layers that depend on it. Within a module, read topics top to bottom. `docs/architecture/OVERVIEW.md` is the reference for *system design* at any point; this file plus `docs/roadmap/**` is the reference for *learning the underlying concepts* — read OVERVIEW.md's relevant section first for context, then the matching topic doc here for depth.

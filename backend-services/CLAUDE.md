@@ -32,4 +32,4 @@ Each MongoDB collection is exposed as exactly one Connect/gRPC service:
 
 ## Conventions
 - Never run delete/drop/truncate against any database from code or a one-off script without an explicit, reviewed migration — see root `CLAUDE.md`.
-- Through Phase 7, this server has no auth interceptor — it trusts callers within the compose/cluster network, same as `ai-services`' tool layer trusts its own RBAC check. Phase 8 wires `packages/shared-auth`'s JWT-verify interceptor into every service, this one included — don't treat the current no-auth state as a permanent design choice.
+- Through Phase 0, this server has no auth interceptor. Phase 1 builds `packages/shared-auth`'s JWT-verify Connect interceptor (used by the new `auth` domain itself); Phase 10 wires it into every other RPC on this server too. Until then, this server trusts callers within the compose/cluster network, same as `ai-services`' tool layer trusts its own RBAC check — don't treat the interim no-auth state as a permanent design choice.

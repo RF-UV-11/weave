@@ -748,23 +748,28 @@ CI/CD (`.github/workflows`): `buf lint` + `buf breaking` → `go test` + `pytest
 
 Each phase = **Theory → Concepts → Implementation → Exercise → Mini-project → Best practices → Common mistakes**. Build incrementally; don't start a phase until the previous phase's mini-project runs end-to-end.
 
+Build order is **module-by-module, not vertical-slice** — each phase finishes one service group before the next starts, with `frontend-services/web` deliberately last (Phase 12) and the Streamlit demo as the one lightweight dev-visualization tool along the way. See `PLAN.md` for the authoritative phase list; this table is the learning-focused summary.
+
 | Phase | Focus | Mini-project |
 |---|---|---|
 | **0. Contracts & Data Tier** | protobuf, `buf`, gRPC/Connect, Go + MongoDB data-access service | One `backend-services` RPC (`CreateTicket`) writing a real Mongo document |
-| **1. Basic Chat** | LLM fundamentals, prompt engineering, streaming, Connect server-streaming, Next.js wiring | A single chat RPC that streams responses, no tools yet |
-| **2. Tool Calling** | Function calling schemas, structured output, tool → `backend-services` RPC | Chatbot that creates a real ticket in Mongo via a tool → gRPC → Go tier |
-| **3. RAG** | Chunking, embeddings, Qdrant, hybrid search, reranking | Chat that answers from an ingested KB with citations |
-| **4. Memory** | Short/long-term memory, conversation state, preferences | Assistant that remembers a user's name/preferences across sessions |
-| **5. MCP** | MCP protocol, building a client and a server, resources/tools/prompts | Build one MCP server (Calendar MCP) and wire it into chat |
+| **1. Backend Core Domains** | Repeating the RPC-per-collection pattern: `chat`, `knowledge-base`, `calendar`, `auth` domains + JWT issuing | Four more working Go RPCs, verified via `grpcurl`/`buf curl`, no Python yet |
+| **2. AI Services Core** | LLM fundamentals, prompt engineering, streaming, Connect server-streaming, function calling, tool → `backend-services` RPC | Streaming chat RPC + a real `create_ticket` tool call, watched live in the Streamlit dev tool |
+| **3. Channels** | Channel adapter pattern (thin translation layers) | Web widget + WhatsApp adapter both round-trip through the same chat RPC |
+| **4. RAG** | Chunking, embeddings, Qdrant, hybrid search, reranking | Chat that answers from an ingested KB with citations |
+| **5. Memory** | Short/long-term memory, conversation state, preferences | Assistant that remembers a user's name/preferences across sessions |
 | **6. Multi-Agent** | LangGraph StateGraph, Planner pattern, conditional routing, Pydantic AI comparison | Planner routes between Sales, Support, and RAG agents correctly |
 | **7. Grouped Compute** | `analysis-services` pattern: one server, modules via routes | `estimateProject` + `getAnalytics` as modules behind one compute server |
-| **8. Production Contracts & Auth** | Full data-access domain split, JWT in metadata, RBAC interceptor, idempotency | All core domains behind the Go tier with JWT auth and role checks |
+| **8. MCP** | MCP protocol, building a client and a server, resources/tools/prompts | Build one MCP server (Calendar MCP) and wire it into chat |
 | **9. Monitoring** | Langfuse tracing, OpenTelemetry across Go + Python, offline evals | Dashboard showing trace costs, latencies, and a nightly eval score |
-| **10. Deployment** | Podman → Kubernetes, CI/CD, autoscaling | Full stack deployed to a K8s cluster (local kind/minikube fine) |
+| **10. Backend Completion** | Remaining 8 domains, RBAC interceptor wired everywhere, idempotency | All core domains behind the Go tier with JWT auth and role checks |
+| **11. Domain Packs & Multi-Tenancy** | Config-driven domain design, tenant isolation | Two domain packs on one deployment; isolation test passing |
+| **12. Frontend** | Next.js wiring, the full Live Signal Path, design systems for AI products | The customer + admin web portal, replacing the Streamlit demo as the primary UI |
+| **13. Deployment** | Podman → Kubernetes, CI/CD, autoscaling, OSS project structure | Full stack (including the frontend) deployed to a K8s cluster (local kind/minikube fine) |
 
 The full module/topic breakdown, the exact doc path and required structure for each generated learning doc, and the reading order live in **`LEARNING.md`** — that file, not this section, is the source of truth for `docs/roadmap/**` content.
 
-The early phases build the single reference domain pack (IT services) on one channel (the Next.js web app). `PLAN.md` continues with generalizing into config-driven domain packs, multi-tenancy, channel adapters, and open-source release readiness — see §21–24.
+The early phases build the single reference domain pack (IT services), verified without any UI beyond the Streamlit dev tool. `PLAN.md` continues with generalizing into config-driven domain packs, multi-tenancy, the real frontend, and open-source release readiness — see §21–24.
 
 ---
 
@@ -875,4 +880,4 @@ Since this repo is meant to be forked and run by firms who are not its original 
 
 ### Next step
 
-Start with **Phase 0** (`docs/roadmap/phase-0.md`): define the first contracts in `protos/`, generate stubs, and stand up `backend-services` with one real `CreateTicket` RPC writing to MongoDB — the data tier that every later phase builds on. Then Phase 1 adds the streaming chat RPC in `ai-services`. Generalization, multi-tenancy, and additional channels come later in `PLAN.md`, once the reference implementation works.
+Start with **Phase 0** (`docs/roadmap/phase-0.md`): define the first contracts in `protos/`, generate stubs, and stand up `backend-services` with one real `CreateTicket` RPC writing to MongoDB — the data tier that every later phase builds on. Phase 1 rounds out `backend-services` with the core domains (`chat`, `knowledge-base`, `calendar`, `auth`); Phase 2 then adds the streaming chat RPC in `ai-services`. The build proceeds module-by-module from there, with generalization, multi-tenancy, and the Next.js frontend coming later in `PLAN.md`, once the reference implementation works end-to-end via `grpcurl`/the Streamlit demo.

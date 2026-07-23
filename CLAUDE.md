@@ -100,7 +100,7 @@ golangci-lint run                                       # lint Go
 ruff check . && ruff format .                           # lint/format Python
 pnpm lint && pnpm typecheck                             # frontend
 ```
-(These commands are targets, not yet all wired — Phase 1 sets up the actual scripts/Makefile. Update this section once real commands exist.)
+(The root `Makefile` (Phase 0) wraps `up`/`gen`/`down`/`logs`/`lint`/`build-backend`/`test-backend` already. The Python/frontend commands above are still targets — not real until `ai-services` (Phase 2) and `frontend-services/web` (Phase 12) exist. Update this section as each lands.)
 
 ## Working style for this repo
 - Work phase by phase per `PLAN.md`. Don't jump ahead to MCP tooling while basic tool-calling tasks are still unchecked.

@@ -65,7 +65,7 @@ This element is the thing a firm's engineering team should recognize the product
 - User messages: right-aligned, plain text on `surface`, no bubble outline needed beyond the background shade.
 - Assistant messages: left-aligned, `surface` background, `border` hairline, trace strip (§2) above the text when tools fired, citation chips (small, `text-secondary`, mono) inline when RAG sources were used.
 - Streaming: a `signal`-colored blinking cursor block at the end of in-flight text, not a generic spinner.
-- Tool-call cards (from `PLAN.md` Phase 2 onward) are just the trace strip's expanded node — don't build a second, differently-styled component for the same concept.
+- Tool-call cards (styled fully in `PLAN.md` Phase 12, the Next.js frontend; approximated earlier in the Phase 2 Streamlit dev tool) are just the trace strip's expanded node — don't build a second, differently-styled component for the same concept.
 
 ---
 
