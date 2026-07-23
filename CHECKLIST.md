@@ -24,8 +24,8 @@ Legend: `[ ]` not started · `[~]` in progress / partial · `[x]` done and wired
 - [ ] `protos/analysis_services/v1/` capabilities
 
 ### Infra & tooling
-- [~] `infra/podman-compose.yml` — written (mongo, redis, qdrant, minio, backend-services); **not yet runtime-verified** (WSL2/Podman machine not available in current dev environment — see PLAN.md Phase 0 notes)
-- [~] `infra/containerfiles/` per service — `backend-services.Containerfile` done
+- [x] `infra/podman-compose.yml` — mongo, redis, qdrant, minio, backend-services; **runtime-verified 2026-07-23**, all healthy via `podman-compose up -d` (see PLAN.md Phase 0 notes for the WSL2 cgroup v2 fix + the podman-compose build-path workaround: backend-services is a pre-built `image:`, not an inline `build:`)
+- [x] `infra/containerfiles/` per service — `backend-services.Containerfile` done, builds clean (`make build-backend-image`)
 - [x] `.env.example` complete
 - [x] Root `Makefile` (`make up/gen/down/logs/lint/build-backend/test-backend`)
 - [ ] `packages/shared-auth` — JWT-verify Connect interceptor + RBAC helper (Go + Python)
@@ -39,8 +39,8 @@ Legend: `[ ]` not started · `[~]` in progress / partial · `[x]` done and wired
 ### 2.1 `backend-services` (Go) — the only DB tier
 RPC-per-collection layout (proto entity + mongodb/<collection>.go + rpc_services/<collection>/ + index bootstrap) — see `backend-services/CLAUDE.md`:
 - [x] `mongodb/initialize.go` (single Mongo client + `DbType`/`Queries`/`Db` — the only DB creds in the repo)
-- [x] `main.go` at module root (Connect server, `Health` RPC via `health/`) — builds and vets clean; not yet run against a live Mongo instance
-- [x] **ticket** — `mongodb/ticket.go` + `rpc_services/ticket/`: `CreateTicket`, `GetTicket`, `ListTickets` (code complete; runtime-unverified pending Podman). Reference example for the `_id`-as-primary-key convention.
+- [x] `main.go` at module root (Connect server, `Health` RPC via `health/`) — builds, vets, and runs clean against a live Mongo instance
+- [x] **ticket** — `mongodb/ticket.go` + `rpc_services/ticket/`: `CreateTicket`, `GetTicket`, `ListTickets` — **runtime-verified 2026-07-23** via `buf curl` against the compose-launched instance, confirmed persisted with `mongosh`. Reference example for the `_id`-as-primary-key convention.
 - [ ] **chat** — `AppendMessage`, `GetSession`, `WriteMemory`, `GetPreferences`
 - [ ] **knowledge-base** — `ListArticles`, `UpsertArticle`
 - [ ] **calendar** — `GetAvailability`, `BookMeeting`
@@ -161,6 +161,6 @@ Newest first. One row per released version.
 
 | Version | Date | Phase | Highlights |
 |---|---|---|---|
-| _(unreleased)_ | — | 0 | `protos/` + Go `backend-services` skeleton (ticket domain) built and compiling; `podman-compose up` runtime verification still pending (Podman/WSL2 not available in current dev environment) |
+| _(unreleased, ready to tag v0.1.0)_ | 2026-07-23 | 0 | Phase 0's Definition of Done fully met: `podman-compose up -d` brings up healthy Mongo/Redis/Qdrant/MinIO/backend-services, `CreateTicket` verified end-to-end against real MongoDB. Not yet tagged — Module 0's `LEARNING.md` topic docs (protobuf/buf, gRPC/Connect, Go data-access services, MongoDB modeling) still need writing per §3's rule. |
 
 > When you cut a release: add a row here, add a matching `CHANGELOG.md` entry, tag the commit (`git tag v0.x.0`), and make sure the phase's boxes above are all `[x]`.

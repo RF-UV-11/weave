@@ -63,9 +63,13 @@ services:
       retries: 10
 
   backend-services:
-    build:
-      context: ..
-      dockerfile: infra/containerfiles/backend-services.Containerfile
+    # Pre-built image, not an inline `build:` — podman-compose 1.6.0 has a
+    # real bug resolving build context/dockerfile paths on Windows (tried both
+    # CWD-relative and compose-file-relative, both broke differently). Build
+    # with `make build-backend-image` (or `podman build -t
+    # servicesphere/backend-services -f infra/containerfiles/backend-services.Containerfile .`
+    # from repo root) before `podman-compose up`.
+    image: localhost/servicesphere/backend-services:latest
     restart: unless-stopped
     ports:
       - "8081:8081"
