@@ -161,6 +161,6 @@ Newest first. One row per released version.
 
 | Version | Date | Phase | Highlights |
 |---|---|---|---|
-| _(unreleased, ready to tag v0.1.0)_ | 2026-07-23 | 0 | Phase 0's Definition of Done fully met: `podman-compose up -d` brings up healthy Mongo/Redis/Qdrant/MinIO/backend-services, `CreateTicket` verified end-to-end against real MongoDB. Not yet tagged — Module 0's `LEARNING.md` topic docs (protobuf/buf, gRPC/Connect, Go data-access services, MongoDB modeling) still need writing per §3's rule. |
+| **`v0.1.0`** | 2026-07-23 | 0 | Phase 0 complete: `podman-compose up -d` brings up healthy Mongo/Redis/Qdrant/MinIO/backend-services, `CreateTicket`/`GetTicket`/`ListTickets` verified end-to-end against real MongoDB via `buf curl` + `mongosh`. Module 0's 4 `LEARNING.md` topic docs written (`docs/roadmap/00-contracts-data/`). |
 
 > When you cut a release: add a row here, add a matching `CHANGELOG.md` entry, tag the commit (`git tag v0.x.0`), and make sure the phase's boxes above are all `[x]`.

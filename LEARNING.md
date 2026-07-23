@@ -61,10 +61,10 @@ Status: `[ ]` not yet written · `[~]` stub exists, needs the full template · `
 ### Module 0 — Contracts & Data Tier *(Phase 0)*
 | Topic | Doc path | Status |
 |---|---|---|
-| Protocol Buffers & `buf` codegen | `docs/roadmap/00-contracts-data/01-protobuf-buf.md` | [ ] |
-| gRPC & Connect (transport, streaming, gRPC-Web) | `docs/roadmap/00-contracts-data/02-grpc-connect.md` | [ ] |
-| Go data-access services (`connect-go`) | `docs/roadmap/00-contracts-data/03-go-data-access.md` | [ ] |
-| MongoDB modeling & the single-DB-tier boundary | `docs/roadmap/00-contracts-data/04-mongodb-data-tier.md` | [ ] |
+| Protocol Buffers & `buf` codegen | `docs/roadmap/00-contracts-data/01-protobuf-buf.md` | [x] |
+| gRPC & Connect (transport, streaming, gRPC-Web) | `docs/roadmap/00-contracts-data/02-grpc-connect.md` | [x] |
+| Go data-access services (`connect-go`) | `docs/roadmap/00-contracts-data/03-go-data-access.md` | [x] |
+| MongoDB modeling & the single-DB-tier boundary | `docs/roadmap/00-contracts-data/04-mongodb-data-tier.md` | [x] |
 
 ### Module 1 — LLM & Prompting Foundations *(Phase 2)*
 | Topic | Doc path | Status |
