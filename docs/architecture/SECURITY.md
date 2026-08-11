@@ -36,13 +36,21 @@ flowchart LR
 
 Tenant connectors need credentials (API keys, OAuth tokens) stored somewhere. This is new relative to a hardcoded-tool design and is treated as its own hardened subsystem, not a field on a Mongo document.
 
-**Requirements, not yet a final design:**
+**Requirements:**
 - Credentials are **never stored in plaintext** in `core`'s general-purpose MongoDB collections.
-- Two candidate approaches, to be decided with a dedicated design pass before any real tenant credential is stored:
-  1. **External vault** (HashiCorp Vault, cloud KMS) — `core` stores only a reference (`credential_ref`), the vault holds the secret, access is short-lived and audited.
-  2. **App-level envelope encryption** inside `core` — secrets encrypted with a per-tenant data key, itself wrapped by a root key held outside the database (KMS-backed), decrypted only in-memory at call time.
 - Whichever approach is chosen: credentials are scoped to exactly the connector they authenticate, rotated on a defined schedule, revocable immediately on tenant request, and every access is an audited event (who/what/when), not just a successful decrypt.
 - A leaked Weave database dump must **not** be sufficient to reconstruct a usable tenant credential.
+
+**Decision (Phase 1): app-level envelope encryption.**
+
+Rejected external vault (HashiCorp Vault / cloud KMS) for now because it adds a new operational dependency to a local-first `podman-compose` stack before Weave has a real KMS relationship in any environment, and Phase 1's scope doesn't need lease-based short-lived access yet — that's a real gap to revisit once there are production tenants (see below). Envelope encryption keeps the credential model self-contained in `core` and doesn't foreclose migrating to an external vault later, since callers only ever see a `credential_ref`, never the encryption scheme.
+
+Shape:
+- Each `CredentialRef` document stores a per-credential **data key (DEK)**: a random 32-byte AES-256 key, generated at credential-creation time, itself encrypted ("wrapped") with a single **root key** using AES-256-GCM.
+- The plaintext secret (API key, OAuth token, etc.) is encrypted with the DEK (AES-256-GCM), and only the ciphertext + wrapped DEK + nonces are stored in Mongo — the DEK is never persisted unwrapped and the root key never touches the database.
+- The root key is supplied to `core` via `VAULT_ROOT_KEY` (32 raw bytes, base64-encoded) at process start — env var locally, a real KMS-backed secret in any deployed environment. `core` holds it only in memory.
+- Decryption happens only in-memory, at the point a credential is handed to an authorized caller (never logged, never returned in a `ListConnectors`-style response — only `RegisterConnector`'s initial response and a dedicated reveal path, once one exists, return plaintext).
+- **Known gap, tracked for a later hardening pass**: rotation of the root key and per-credential access auditing are not yet implemented — Phase 1 ships the encryption mechanism and the "never plaintext at rest" guarantee, not the full operational lifecycle §3 requires. Revisit before any real (non-dev) tenant credential is stored.
 
 ---
 
