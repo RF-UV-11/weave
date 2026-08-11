@@ -51,12 +51,19 @@ How to use this file: work top to bottom, don't start a phase until the previous
 
 **Goal**: named bot profiles per tenant, JWT + RBAC wired through.
 
-- [ ] `protos/database/v1/bot_profile.proto`, `protos/database/v1/auth.proto` (`User`, `Role`)
-- [ ] `protos/core/data_access/v1/auth.proto` — `Register`, `Login`, `Refresh`; `protos/core/data_access/v1/bot_profile.proto` — `CreateBotProfile`, `GetActiveBotProfile(tenant_id, channel)`
-- [ ] `packages/shared-auth` (Go) — JWT-verify interceptor + `requires_role(...)`, tenant-scoped
-- [ ] `core/mongodb/{auth,bot_profile}.go` + rpc services
+- [x] `protos/database/v1/bot_profile.proto`, `protos/database/v1/auth.proto` (`User`, `Role`)
+- [x] `protos/core/data_access/v1/auth.proto` — `Register`, `Login`, `Refresh`; `protos/core/data_access/v1/bot_profile.proto` — `CreateBotProfile`, `GetActiveBotProfile(tenant_id, channel)`
+- [x] `packages/shared-auth` (Go) — JWT-verify interceptor + `requires_role(...)`, tenant-scoped
+- [x] `core/mongodb/{auth,bot_profile}.go` + rpc services
 
-**Definition of done**: two bot profiles (`external`/`internal`) resolve correctly per channel + role for a seeded tenant, verified via `grpcurl`.
+**Definition of done**: ✅ **met.** Seeded tenant `tnt_01KZRJW44K1RB8DJCPFEYQAPAE`, registered an owner user, logged in for an access token, created `external` (channels `[web-widget, whatsapp]`, `roles_allowed: [customer]`) and `internal` (channels `[slack]`, `roles_allowed: [staff, admin]`) bot profiles. `GetActiveBotProfile` on `web-widget` correctly resolved `external`, on `slack` correctly resolved `internal`. Also verified the auth gate itself: no token → `Unauthenticated`; an owner token scoped to a different tenant → `PermissionDenied` ("token is not scoped to this tenant"); a `customer`-role token calling `CreateBotProfile` → `PermissionDenied` ("role is not permitted").
+
+**Notes**:
+- `packages/shared-auth` is its own Go module (not nested under `core/`) since `packages/` is meant to be reused across Weave's services, Go or not. `core/go.mod` pulls it in via a `replace` directive to a relative path; both Containerfiles now copy `packages/shared-auth` into the build context at the matching relative layout (`/repo/packages/shared-auth` alongside `/repo/core`) so the replace resolves inside the container too.
+- The JWT interceptor is wired **server-wide** on `core`'s `grpc.Server` (`grpc.UnaryInterceptor`), with an explicit skip list in `main.go` for: the auth bootstrap RPCs (can't require a token to log in), health/reflection (so `grpcurl` and infra healthchecks keep working), and every pre-Phase-2 Tenant/Connector RPC. Those predate auth and aren't retrofitted with tenant/role checks yet — **known gap, tracked as a follow-up**: lock down Tenant/Connector RPCs the same way BotProfileService already is, once there's a clear per-RPC role policy for them (e.g. who's allowed to `RegisterConnector`).
+- Refresh tokens are stateless JWTs (7-day TTL) — same "ship the mechanism, flag the operational gap" pattern as the Phase 1 vault. No revocation/rotation store yet, so a leaked refresh token is valid until it naturally expires; not acceptable before real tenant credentials are on the line, tracked in `docs/architecture/SECURITY.md` alongside the vault's own known gaps.
+- Caught in verification, not design: `Register`/`Login` were echoing the bcrypt `password_hash` back in the response `User` — harmless (not reversible) but needless exposure, fixed by redacting it before the RPC boundary.
+- Found and fixed a real flake in the *existing* test suite while adding Phase 2 tests: `go test ./...` runs packages concurrently, and every package's `TestMain` was connecting to the same `weave_core_test` Mongo database — one package's teardown `Drop()` could wipe another package's still-running data. Each package now uses its own database name (`weave_core_test_mongodb`, `_connector`, `_tenant`, `_auth`, `_bot_profile`).
 
 **Notes**:
 
