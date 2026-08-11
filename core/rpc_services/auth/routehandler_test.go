@@ -111,6 +111,22 @@ func TestLoginRoundTrip(t *testing.T) {
 	if claims.TenantID != tenantID || claims.Role != "staff" {
 		t.Fatalf("got %+v", claims)
 	}
+	if resp.GetUser().GetPasswordHash() != "" {
+		t.Fatal("expected password_hash to be redacted from the Login response")
+	}
+}
+
+func TestRegisterRedactsPasswordHash(t *testing.T) {
+	s := NewServer(testSecret)
+	resp, err := s.Register(t.Context(), &dataaccessv1.RegisterRequest{
+		TenantId: newTenant(t), Email: "redact@b.com", Password: "password123", Role: databasev1.Role_ROLE_OWNER,
+	})
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if resp.GetUser().GetPasswordHash() != "" {
+		t.Fatal("expected password_hash to be redacted from the Register response")
+	}
 }
 
 func TestLoginRejectsWrongPassword(t *testing.T) {
