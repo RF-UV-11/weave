@@ -1,0 +1,76 @@
+package mongodb
+
+import (
+	"testing"
+
+	databasev1 "weave/core/gen/database/v1"
+)
+
+func TestCreateAndGetActiveBotProfileByChannel(t *testing.T) {
+	tenant, err := CreateTenant(t.Context(), "Bot Profile Test Co", "business")
+	if err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+
+	external, err := CreateBotProfile(t.Context(), tenant.GetXId(), "external", "personas/external.md",
+		nil, []string{"web-widget", "whatsapp"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER})
+	if err != nil {
+		t.Fatalf("CreateBotProfile external: %v", err)
+	}
+	internal, err := CreateBotProfile(t.Context(), tenant.GetXId(), "internal", "personas/internal.md",
+		nil, []string{"slack"}, []databasev1.Role{databasev1.Role_ROLE_STAFF, databasev1.Role_ROLE_ADMIN})
+	if err != nil {
+		t.Fatalf("CreateBotProfile internal: %v", err)
+	}
+
+	gotExternal, err := GetActiveBotProfileByChannel(t.Context(), tenant.GetXId(), "web-widget")
+	if err != nil {
+		t.Fatalf("GetActiveBotProfileByChannel web-widget: %v", err)
+	}
+	if gotExternal.GetXId() != external.GetXId() {
+		t.Fatalf("expected external profile for web-widget, got %q", gotExternal.GetName())
+	}
+
+	gotInternal, err := GetActiveBotProfileByChannel(t.Context(), tenant.GetXId(), "slack")
+	if err != nil {
+		t.Fatalf("GetActiveBotProfileByChannel slack: %v", err)
+	}
+	if gotInternal.GetXId() != internal.GetXId() {
+		t.Fatalf("expected internal profile for slack, got %q", gotInternal.GetName())
+	}
+}
+
+func TestGetActiveBotProfileByChannelIsolatedPerTenant(t *testing.T) {
+	tenantA, err := CreateTenant(t.Context(), "Profile Tenant A", "business")
+	if err != nil {
+		t.Fatalf("CreateTenant A: %v", err)
+	}
+	tenantB, err := CreateTenant(t.Context(), "Profile Tenant B", "business")
+	if err != nil {
+		t.Fatalf("CreateTenant B: %v", err)
+	}
+
+	if _, err := CreateBotProfile(t.Context(), tenantA.GetXId(), "external", "personas/external.md",
+		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}); err != nil {
+		t.Fatalf("CreateBotProfile A: %v", err)
+	}
+
+	if _, err := GetActiveBotProfileByChannel(t.Context(), tenantB.GetXId(), "web-widget"); err == nil {
+		t.Fatal("expected no profile to resolve for tenant B on a channel only tenant A registered (isolation)")
+	}
+}
+
+func TestGetActiveBotProfileByChannelNoMatch(t *testing.T) {
+	tenant, err := CreateTenant(t.Context(), "No Match Co", "business")
+	if err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	if _, err := CreateBotProfile(t.Context(), tenant.GetXId(), "external", "personas/external.md",
+		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}); err != nil {
+		t.Fatalf("CreateBotProfile: %v", err)
+	}
+
+	if _, err := GetActiveBotProfileByChannel(t.Context(), tenant.GetXId(), "whatsapp"); err == nil {
+		t.Fatal("expected no match for an unregistered channel")
+	}
+}

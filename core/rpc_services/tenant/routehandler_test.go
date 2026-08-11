@@ -18,7 +18,7 @@ func TestMain(m *testing.M) {
 	if uri == "" {
 		uri = "mongodb://localhost:27017"
 	}
-	if err := mongodb.InitDatabase(uri, "weave_core_test"); err != nil {
+	if err := mongodb.InitDatabase(uri, "weave_core_test_tenant"); err != nil {
 		fmt.Printf("tenant: skipping integration tests, no Mongo reachable at %s: %v\n", uri, err)
 		os.Exit(0)
 	}

@@ -32,5 +32,29 @@ func EnsureIndexes(ctx context.Context) error {
 		return err
 	}
 
+	// An email only has to be unique per tenant, not globally — the same
+	// person could be a user of two unrelated tenants.
+	if _, err := Db.Db.Collection(ColNames.Users).Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "tenant_id", Value: 1}, {Key: "email", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	}); err != nil {
+		return err
+	}
+
+	// A bot profile's name is unique per tenant (e.g. "external"/"internal").
+	if _, err := Db.Db.Collection(ColNames.BotProfiles).Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "tenant_id", Value: 1}, {Key: "name", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	}); err != nil {
+		return err
+	}
+
+	// GetActiveBotProfileByChannel filters tenant_id + channels membership.
+	if _, err := Db.Db.Collection(ColNames.BotProfiles).Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "tenant_id", Value: 1}, {Key: "channels", Value: 1}},
+	}); err != nil {
+		return err
+	}
+
 	return nil
 }

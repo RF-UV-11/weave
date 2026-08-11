@@ -13,8 +13,14 @@ import (
 // "no mock DB" design — mongodb/ is the only tier allowed to hold real Db
 // state, so faking it here would test nothing meaningful). They connect to
 // MONGO_URI (default mongodb://localhost:27017) against a dedicated
-// "weave_core_test" database and skip entirely if no Mongo is reachable,
-// so `go test ./...` still works without infra running.
+// "weave_core_test_mongodb" database and skip entirely if no Mongo is
+// reachable, so `go test ./...` still works without infra running.
+//
+// Each package under core that runs its own Mongo-backed TestMain uses a
+// distinct database name (see rpc_services/connector and
+// rpc_services/tenant) — `go test ./...` runs packages concurrently, and
+// two TestMains sharing one database means one package's teardown Drop()
+// can wipe data another package's tests are still using mid-run.
 var mongoAvailable bool
 
 func TestMain(m *testing.M) {
@@ -23,7 +29,7 @@ func TestMain(m *testing.M) {
 		uri = "mongodb://localhost:27017"
 	}
 
-	if err := InitDatabase(uri, "weave_core_test"); err != nil {
+	if err := InitDatabase(uri, "weave_core_test_mongodb"); err != nil {
 		fmt.Printf("mongodb: skipping integration tests, no Mongo reachable at %s: %v\n", uri, err)
 		os.Exit(0)
 	}
