@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package database.v1;
+
+option go_package = "weave/core/gen/database/v1;databasev1";
+
+// is_collection: true
+// Mongo collection "tenants", owned by core/mongodb/tenant.go.
+message Tenant {
+  // buf:lint:ignore FIELD_LOWER_SNAKE_CASE
+  string _id = 1;
+  string display_name = 2;
+  // "business" | "individual"
+  string tenant_type = 3;
+  string created_at = 4;
+}

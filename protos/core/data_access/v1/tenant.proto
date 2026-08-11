@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package core.data_access.v1;
+
+import "database/v1/common.proto";
+import "database/v1/tenant.proto";
+
+option go_package = "weave/core/gen/core/data_access/v1;dataaccessv1";
+
+message CreateTenantRequest {
+  string display_name = 1;
+  string tenant_type = 2;
+  string idempotency_key = 3;
+}
+
+message CreateTenantResponse {
+  database.v1.Tenant tenant = 1;
+}
+
+message GetTenantRequest {
+  string id = 1;
+}
+
+message GetTenantResponse {
+  database.v1.Tenant tenant = 1;
+}
+
+message ListTenantsRequest {
+  database.v1.PageRequest page = 1;
+}
+
+message ListTenantsResponse {
+  repeated database.v1.Tenant tenants = 1;
+  database.v1.PageResponse page = 2;
+}
+
+service TenantService {
+  rpc CreateTenant(CreateTenantRequest) returns (CreateTenantResponse);
+  rpc GetTenant(GetTenantRequest) returns (GetTenantResponse);
+  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
+}

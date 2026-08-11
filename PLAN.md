@@ -1,0 +1,86 @@
+# Weave — Build Plan
+
+How to use this file: work top to bottom, don't start a phase until the previous one's "Definition of done" is met. Tick boxes as you go; add a one-line note under a phase if you hit a real gotcha. Full rationale for *why* things are shaped this way lives in `docs/architecture/ARCHITECTURE.md` and `docs/architecture/SECURITY.md` — this file is the *what/when*.
+
+**The trust boundary that governs every phase**: `core` (Go) is the only tier holding Weave's own database credentials, and it only ever holds platform data (tenants, connectors, credentials, chat/memory, auth, billing) — never a tenant's business data. See `OVERVIEW.md` and `docs/architecture/SECURITY.md` before touching `core`.
+
+---
+
+## Phase 0 — Contracts & Platform Data Tier
+
+**Goal**: the spine — a real `protos/` contract, generated Go stubs, and a `core` Go service writing to MongoDB. Nothing else touches the DB.
+
+- [x] `protos/buf.yaml` + `protos/buf.gen.yaml` — codegen to Go (`core/gen`)
+- [x] First contracts: `protos/database/v1/common.proto` (Page, Health, ErrorDetail), `protos/database/v1/tenant.proto` (`Tenant`, `is_collection: true`)
+- [x] `protos/core/data_access/v1/tenant.proto` — `CreateTenant`, `GetTenant`, `ListTenants` (cursor-paginated)
+- [x] `core/` Go module: `mongodb/` (initialize.go, collections.go, indexes.go, health.go, tenant.go — the only Mongo access), `rpc_services/tenant/` (server.go + routehandler.go), `configs/`, `main.go` at module root (gRPC server + reflection + `Health` RPC)
+- [x] `infra/podman-compose.yml` — mongo, redis:7, qdrant/qdrant, minio/minio, healthchecks, plus `core`
+- [x] Confirm `core`'s `CreateTenant` over gRPC writes a real Mongo document, verified via `grpcurl` + `mongosh`
+
+**Definition of done**: ✅ **met.** `grpcurl … CreateTenant` inserted `tnt_01KZRC2XWM6ZWYSC0BP0GE57BP`, confirmed via `mongosh` (`{"_id":"tnt_…","display_name":"Acme Clinic","tenant_type":"business","created_at":"…"}`) and re-read via `GetTenant`.
+
+**Notes**:
+- `_id` convention carried forward from the reference design: every `is_collection: true` entity's first field is `_id` (Mongo's real primary key), which protoc-gen-go renders as `XId`/`GetXId()` for the leading underscore — expected, not a bug. `mongodb.InitDatabase` sets `SetBSONOptions(&options.BSONOptions{UseJSONStructTags: true})` so the generated struct's `json:"_id,..."` tags drive Mongo (de)serialization directly — no separate DTO layer.
+- Mongo driver: `go.mongodb.org/mongo-driver/v2`.
+- **Windows/podman-compose networking gotcha (recurring from before)**: on this Windows/WSL2 podman-machine setup, a freshly `podman run`'s published port is not reliably reachable from the Windows host over `127.0.0.1` even though `podman ps`/`inspect` report the mapping correctly (confirmed working *inside* the podman machine VM via `podman machine ssh`, not from the host). Verified Phase 0 by attaching both `mongo` and `core` to a user-defined `podman network create weave-net` and using container-DNS (`mongo:27017`) instead of relying on host port-forwarding for service-to-service traffic — only `core`'s own published port (for external `grpcurl` access) needs to cross the host boundary. `infra/podman-compose.yml` creates its own network for services automatically so this should be transparent under real `podman-compose up`, but if `up` ever hangs on Mongo health, check host-port reachability with `podman machine ssh -- curl 127.0.0.1:<port>` before assuming Mongo itself is broken.
+
+---
+
+## Phase 1 — Connector Registry & Credential Vault
+
+**Goal**: the mechanism that makes Weave "plug-and-play" — tenants can register an MCP connector and its credentials, safely.
+
+- [ ] `protos/database/v1/connector.proto` (`Connector`, `is_collection: true`: tenant_id, name, transport, endpoint, credential_ref, capability_manifest, status)
+- [ ] `protos/database/v1/credential.proto` (`CredentialRef`, `is_collection: true` — reference only; see `docs/architecture/SECURITY.md` §3 for the vault design decision, still open)
+- [ ] `protos/core/data_access/v1/connector.proto` — `RegisterConnector`, `ListConnectors`, `RefreshManifest`, `DeregisterConnector`
+- [ ] **Design spike, before writing vault code**: external vault (HashiCorp Vault/cloud KMS) vs. app-level envelope encryption — pick one, document the decision in `docs/architecture/SECURITY.md` §3
+- [ ] `core/mongodb/connector.go` + `core/rpc_services/connector/`
+- [ ] Isolation test: two tenants register connectors with colliding names, confirm no cross-tenant leak in `ListConnectors`
+
+**Definition of done**: register a connector against a running (even a trivial stub) MCP server, see its `tools/list` manifest cached, credentials never appear in plaintext in Mongo.
+
+**Notes**:
+
+---
+
+## Phase 2 — Bot Profiles & Auth
+
+**Goal**: named bot profiles per tenant, JWT + RBAC wired through.
+
+- [ ] `protos/database/v1/bot_profile.proto`, `protos/database/v1/auth.proto` (`User`, `Role`)
+- [ ] `protos/core/data_access/v1/auth.proto` — `Register`, `Login`, `Refresh`; `protos/core/data_access/v1/bot_profile.proto` — `CreateBotProfile`, `GetActiveBotProfile(tenant_id, channel)`
+- [ ] `packages/shared-auth` (Go) — JWT-verify interceptor + `requires_role(...)`, tenant-scoped
+- [ ] `core/mongodb/{auth,bot_profile}.go` + rpc services
+
+**Definition of done**: two bot profiles (`external`/`internal`) resolve correctly per channel + role for a seeded tenant, verified via `grpcurl`.
+
+**Notes**:
+
+---
+
+## Phase 3 — Orchestrator Core + MCP Client
+
+**Goal**: `orchestrator` exists, streams a real LLM response, and can call a real MCP connector via dynamic tool assembly.
+
+- [ ] `protos/orchestrator/v1/chat.proto` — server-streaming `ChatStream`; wire Python codegen
+- [ ] `orchestrator/` Python project: `server/chat_service.py`, `llm/` (Ollama first), `mcp_client/` (initialize → tools/list → tools/call)
+- [ ] `orchestrator/tools/assembly.py` — the dynamic tool-assembly mechanism from `docs/architecture/ARCHITECTURE.md` §3
+- [ ] `packages/shared-clients` (Python) — generated gRPC client to `core`
+- [ ] Reference connector: `connectors/reference-mcp/` — a trivial MCP server (e.g. a fake booking tool) to develop against
+- [ ] Minimal dev UI (chat test harness — CLI or a bare Streamlit page, not the real `web` app) to watch it work
+
+**Definition of done**: ask the dev harness a question that requires the reference connector's tool; see the tool discovered dynamically (not hardcoded), called, and the answer streamed back — end-to-end through `core` for tenant/profile resolution.
+
+**Notes**:
+
+---
+
+## Phase 4+ — not yet planned in detail
+
+RAG, memory, multi-agent planning, `compute`, real channels (`web-widget`, WhatsApp, Slack), the `web` onboarding dashboard, observability (Langfuse/OTel), and deployment (Kubernetes) all follow the same shape as the architecture doc describes, but aren't broken into phases yet — do that once Phase 3's dynamic-tool-assembly milestone is real and proven, not before.
+
+## Parking lot
+- Connector template marketplace, no-code onboarding, vertical `packs/` marketplace
+- Usage-based billing, white-label tiers
+- Multi-language support
+- Kubernetes deployment

@@ -1,0 +1,37 @@
+# IDE / OS
+.vscode/
+!.vscode/extensions.json
+.idea/
+.claude/settings.local.json
+.DS_Store
+Thumbs.db
+
+# Generated code — regenerate via `buf generate`, never hand-edit
+gen/
+*/gen/
+
+# Go
+core/core
+*.test
+*.out
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+
+# Env / secrets
+.env
+.env.local
+*.pem
+
+# Logs
+*.log

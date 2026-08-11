@@ -1,0 +1,11 @@
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+COPY core/go.mod core/go.sum ./
+RUN go mod download
+COPY core/ ./
+RUN CGO_ENABLED=0 go build -o /out/core .
+
+FROM gcr.io/distroless/static-debian12
+COPY --from=build /out/core /core
+EXPOSE 9090
+ENTRYPOINT ["/core"]
