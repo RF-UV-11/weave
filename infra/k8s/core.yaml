@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core
+  namespace: weave
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: core
+  template:
+    metadata:
+      labels:
+        app: core
+    spec:
+      containers:
+        - name: core
+          image: localhost/weave/core:latest
+          # Prototype only: image is built locally and loaded into
+          # minikube's runtime with `minikube image load`, never pulled
+          # from a registry — imagePullPolicy: Never makes that explicit
+          # instead of silently failing on a real cluster.
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 9090
+          env:
+            - name: MONGO_URI
+              value: "mongodb://mongo:27017"
+            - name: MONGO_DB_NAME
+              value: "weave"
+            - name: GRPC_ADDR
+              value: ":9090"
+            - name: REDIS_URI
+              value: "redis://redis:6379"
+          envFrom:
+            - secretRef:
+                name: core-secrets
+          readinessProbe:
+            grpc:
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            grpc:
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: core
+  namespace: weave
+spec:
+  selector:
+    app: core
+  ports:
+    - port: 9090
+      targetPort: 9090
