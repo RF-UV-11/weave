@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package orchestrator.v1;
+
+option go_package = "weave/core/gen/orchestrator/v1;orchestratorv1";
+
+message ChatStreamRequest {
+  string channel = 1;
+  string message = 2;
+  // Continues an existing conversation; empty starts a new one. Session
+  // persistence isn't built yet (Phase 4+) — for now this is carried but
+  // unused beyond echoing back in ChatStreamResponse.
+  string session_id = 3;
+}
+
+message ChatStreamResponse {
+  // A chunk of the assistant's streamed answer. Concatenate in order.
+  string token = 1;
+  // Set only on the final message of the stream.
+  bool done = 2;
+  string session_id = 3;
+  // Set when a tool was called to produce this answer — which connector
+  // and tool, for traceability (docs/architecture/SECURITY.md §7).
+  string tool_used = 4;
+  string connector_used = 5;
+}
+
+service ChatService {
+  // Server-streaming: the caller's tenant/role is resolved from the JWT
+  // carried in gRPC metadata (authorization: Bearer <token>), same as
+  // every authenticated RPC on core — never a client-supplied tenant_id.
+  rpc ChatStream(ChatStreamRequest) returns (stream ChatStreamResponse);
+}
