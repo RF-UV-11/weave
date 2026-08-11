@@ -84,6 +84,28 @@ How to use this file: work top to bottom, don't start a phase until the previous
 
 ---
 
+## Cross-cutting — Health checks & local Kubernetes prototype (minikube)
+
+**Goal**: real health checks (not a static "always up"), and `core` + its dependencies actually running on Kubernetes — the first step toward "deploy this and offer it as a service" rather than only ever running under `podman-compose`.
+
+- [x] `core`'s gRPC health status (`grpc.health.v1.Health`) reflects real Mongo/Redis connectivity via a background loop (`core/health.go`), not a value set once at startup and never updated
+- [x] `packages/shared-ratelimit` gets a `Ping` method so the health loop can check Redis the same way `mongodb.Healthy` already tracks Mongo
+- [x] `infra/k8s/{namespace,mongo,redis,core-secret,core}.yaml` — Mongo as a `StatefulSet` with a `PersistentVolumeClaim`, Redis as a plain `Deployment` (its data is TTL-bound rate-limit counters, fine to lose on restart), `core` as a `Deployment` with `grpc` readiness/liveness probes against the now-real health status
+- [x] `grpc-health-probe` added to `core`'s distroless image (`go install`, since there's no shell to run a `CMD-SHELL` script) and wired as `core`'s `podman-compose.yml` healthcheck — previously the only service in that file without one
+- [x] Liveness probes added to the k8s `mongo`/`redis` manifests (they only had readiness before)
+
+**Definition of done**: ✅ **met**, on minikube with the podman driver. Deployed all four workloads, confirmed `grpcurl` through `kubectl port-forward` reaches all four services and a `CreateTenant` write actually lands in the StatefulSet-backed Mongo (`db.tenants.findOne()` inside the `mongo-0` pod shows the record). Confirmed rate limiting works against the in-cluster Redis the same way it did under `podman-compose`. Confirmed the health check is *real*, not decorative: stopped the Mongo container directly, watched `core`'s health flip to `NOT_SERVING` within ~20s via `grpc-health-probe`, then watched it recover once Mongo came back — this is what makes the k8s `livenessProbe`/`readinessProbe` on `core` meaningful instead of just checking the process is alive.
+
+**Notes**:
+- **Podman driver + Windows/WSL2 gotcha, worse than the earlier networking ones**: under the *rootless* podman machine (the mode this project had been using throughout Phases 0–2), minikube's pod network was completely broken — not just service DNS, but raw pod-to-pod TCP by IP address timed out too (confirmed with a `busybox` debug pod: `nc -zv <pod-ip> <port>` timed out even bypassing DNS entirely). Switching the podman machine to **rootful** (`podman machine set --rootful`) fixed it outright. This is a real behavioral difference, not a config tweak — rootful and rootless podman have entirely separate container/image namespaces, so switching made the pre-existing `podman-compose` dev containers (`weave-mongo`, `weave-core`, `weave-net`, etc.) disappear from `podman ps` (recoverable by switching back to rootless; nothing was deleted). **Decision: the podman machine stays rootful going forward** — minikube needs it, and the `podman-compose` dev workflow works identically under rootful, just under a different container namespace than whatever was running before this session.
+- **Getting an image into minikube**: `minikube image load <name>` tried to resolve the image via a Docker daemon that isn't installed on this machine and failed outright. `podman save -o image.tar <name>` followed by `minikube image load image.tar` works reliably — prefer the tarball path over the by-name path on a podman-only setup.
+- `grpc-health-probe` is installed via `go install github.com/grpc-ecosystem/grpc-health-probe@v0.4.28` in the build stage rather than downloading a release binary by URL/arch — it's a Go module, so this is more reproducible and doesn't need `curl`/`wget` in the alpine build image.
+- Secrets in `infra/k8s/core-secret.yaml` are the same dev-only values already committed in `podman-compose.yml` — fine for a throwaway local prototype, **not** fine once this stops being one. See `docs/architecture/SECURITY.md` §3's vault known-gaps note for the same caveat applied to `VAULT_ROOT_KEY`.
+- Deliberately did **not** stand up Qdrant/MinIO in k8s yet — nothing in `core` uses them today (only Mongo and Redis have real code paths against them). Add them when `orchestrator`/RAG actually needs them (Phase 3+), not preemptively.
+- This is a **local prototype** (minikube), not a real deployment target — no ingress, no TLS, no real secrets management, single replica of everything, no autoscaling. `PLAN.md`'s Phase 4+ already earmarks real Kubernetes deployment as a later concern; this cross-cutting item is "prove it can run on k8s at all and health-checks work," not that milestone.
+
+---
+
 ## Phase 3 — Orchestrator Core + MCP Client
 
 **Goal**: `orchestrator` exists, streams a real LLM response, and can call a real MCP connector via dynamic tool assembly.
