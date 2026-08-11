@@ -78,6 +78,12 @@ flowchart TB
 
 Failure handling: a connector that's down or times out is dropped from the tool set for that turn (with a trace event), not treated as a hard failure of the whole request — one tenant's misbehaving connector never blocks their other connectors or any other tenant.
 
+**Tool descriptions are mandatory, not optional metadata.** A tool name and JSON schema alone are not enough context for the planner/agent to use a tool correctly or interpret its result — the description is load-bearing, not decorative:
+
+- **At registration/manifest-refresh time** (`core`): every tool returned by a connector's `tools/list` must carry a non-empty `description`. `core` rejects caching a manifest that has a tool missing one — a connector is only "active" once every tool it exposes is fully described. This is enforced in code today by `core/mcpclient.ListTools` / `RefreshManifest` (Phase 1).
+- **At tool-call time** (`orchestrator`, Phase 3 — not yet built): a tool's cached description travels alongside its `tools/call` result when handed back to the agent/LLM, not just the raw result payload. The model reasons about a tool's output in light of what the tool claims to do, so the description is part of the result's context, every time — never dropped after the initial planning step. **Tracked as an explicit Phase 3 definition-of-done item in `PLAN.md`.**
+- **For tenants/SDK integrators**: whoever stands up a connector (hand-written MCP server, or scaffolded via the future `connector-sdk`) is responsible for writing a complete, accurate description for every tool and resource they expose — not just a name. `core` treats a missing description as a registration-time validation failure, not a warning, precisely so this can't be skipped by an integrator in a hurry.
+
 ---
 
 ## 4. Data model (owned by `core`)

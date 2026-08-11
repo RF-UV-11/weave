@@ -30,16 +30,20 @@ How to use this file: work top to bottom, don't start a phase until the previous
 
 **Goal**: the mechanism that makes Weave "plug-and-play" — tenants can register an MCP connector and its credentials, safely.
 
-- [ ] `protos/database/v1/connector.proto` (`Connector`, `is_collection: true`: tenant_id, name, transport, endpoint, credential_ref, capability_manifest, status)
-- [ ] `protos/database/v1/credential.proto` (`CredentialRef`, `is_collection: true` — reference only; see `docs/architecture/SECURITY.md` §3 for the vault design decision, still open)
-- [ ] `protos/core/data_access/v1/connector.proto` — `RegisterConnector`, `ListConnectors`, `RefreshManifest`, `DeregisterConnector`
-- [ ] **Design spike, before writing vault code**: external vault (HashiCorp Vault/cloud KMS) vs. app-level envelope encryption — pick one, document the decision in `docs/architecture/SECURITY.md` §3
-- [ ] `core/mongodb/connector.go` + `core/rpc_services/connector/`
-- [ ] Isolation test: two tenants register connectors with colliding names, confirm no cross-tenant leak in `ListConnectors`
+- [x] `protos/database/v1/connector.proto` (`Connector`, `is_collection: true`: tenant_id, name, transport, endpoint, credential_ref, capability_manifest, status)
+- [x] `protos/database/v1/credential.proto` (`CredentialRef`, `is_collection: true` — reference only; see `docs/architecture/SECURITY.md` §3 for the vault design decision)
+- [x] `protos/core/data_access/v1/connector.proto` — `RegisterConnector`, `ListConnectors`, `RefreshManifest`, `DeregisterConnector`
+- [x] **Design spike, before writing vault code**: external vault (HashiCorp Vault/cloud KMS) vs. app-level envelope encryption — decided app-level envelope encryption, documented in `docs/architecture/SECURITY.md` §3
+- [x] `core/mongodb/connector.go` + `core/rpc_services/connector/`
+- [x] Isolation test: two tenants register connectors with colliding names, confirm no cross-tenant leak in `ListConnectors`
 
-**Definition of done**: register a connector against a running (even a trivial stub) MCP server, see its `tools/list` manifest cached, credentials never appear in plaintext in Mongo.
+**Definition of done**: ✅ **met.** Registered `acme-booking-mcp` (tenant `tnt_01KZRE1R2R42H3Y80Q02YMZ7K7`) against `connectors/dev-stub-mcp` (trivial HTTP JSON-RPC stub), `RefreshManifest` cached its real `tools/list` result (`book_appointment`) onto the connector doc and flipped `status` to `active`. `mongosh` confirmed the stored `CredentialRef` holds only `ciphertext`/`nonce`/`wrapped_dek`/`dek_nonce` — no plaintext secret. A second tenant (`tnt_01KZREDYRMX40P947XFA38DV7G`) registered a connector with the same name `acme-booking-mcp`; each tenant's `ListConnectors` only ever returned its own.
 
 **Notes**:
+- `core/vault/vault.go` — AES-256-GCM envelope encryption: a random per-credential DEK encrypts the secret, then gets wrapped by a root key from `VAULT_ROOT_KEY` (base64, 32 bytes) that's only ever held in memory. Root key rotation and per-access audit logging are explicitly deferred — see `docs/architecture/SECURITY.md` §3's "known gap" note; must land before any real (non-dev) tenant credential is stored.
+- `core/mcpclient/client.go` is a deliberately minimal MCP slice (HTTP-only `tools/list` JSON-RPC call, 1 MiB response cap) just for `core` to cache a manifest — it is not the real MCP client, which is Phase 3's `orchestrator` scope (stdio/SSE transports, `initialize`, `tools/call`).
+- `connectors/dev-stub-mcp/` — throwaway Python stdlib HTTP stub used only to exercise `RefreshManifest` in dev; not a real connector template.
+- **Podman networking, same gotcha as Phase 0**: `host.containers.internal` did not resolve on the user-defined `weave-net` bridge network in this WSL2/podman-machine setup (confirmed via `podman run --network weave-net busybox nslookup host.containers.internal` → NXDOMAIN). Running the stub MCP server as its own container on `weave-net` (reached via container DNS, same pattern as `weave-mongo`) worked immediately — prefer that over host-port tricks for anything `core` itself needs to reach.
 
 ---
 
@@ -70,6 +74,7 @@ How to use this file: work top to bottom, don't start a phase until the previous
 - [ ] Minimal dev UI (chat test harness — CLI or a bare Streamlit page, not the real `web` app) to watch it work
 
 **Definition of done**: ask the dev harness a question that requires the reference connector's tool; see the tool discovered dynamically (not hardcoded), called, and the answer streamed back — end-to-end through `core` for tenant/profile resolution.
+- [ ] **Tool description carried through to tool-call results** (requirement added post-Phase-1, see `docs/architecture/ARCHITECTURE.md` §3): when `tools/call` returns, the response handed to the planner/agent must include the tool's description alongside the raw result — not the raw result alone. `core` already enforces descriptions are present at registration (`RefreshManifest` rejects any tool missing one); this item is enforcing the other half, that the description isn't dropped after that point.
 
 **Notes**:
 
