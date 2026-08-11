@@ -42,6 +42,16 @@ func New(redisURL string) (*Limiter, error) {
 	return &Limiter{client: client}, nil
 }
 
+// Ping reports whether Redis is currently reachable — for callers that
+// want to reflect real dependency health (e.g. a gRPC health check)
+// rather than assuming the connection established at New() is still good.
+func (l *Limiter) Ping(ctx context.Context) error {
+	if err := l.client.Ping(ctx).Err(); err != nil {
+		return fmt.Errorf("ratelimit: ping: %w", err)
+	}
+	return nil
+}
+
 // Allow reports whether one more request under key is permitted by cfg,
 // using a fixed-window counter: the first request for a key in a window
 // sets the window's expiry, every request within it increments the same

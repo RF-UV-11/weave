@@ -27,6 +27,21 @@ func newTestLimiterWithMiniredis(t *testing.T) (*Limiter, *miniredis.Miniredis) 
 	return l, mr
 }
 
+func TestPingSucceedsWhenReachable(t *testing.T) {
+	l := newTestLimiter(t)
+	if err := l.Ping(t.Context()); err != nil {
+		t.Fatalf("Ping: %v", err)
+	}
+}
+
+func TestPingFailsAfterRedisGoesAway(t *testing.T) {
+	l, mr := newTestLimiterWithMiniredis(t)
+	mr.Close()
+	if err := l.Ping(t.Context()); err == nil {
+		t.Fatal("expected Ping to fail once redis is unreachable")
+	}
+}
+
 func TestNewRejectsUnreachableRedis(t *testing.T) {
 	if _, err := New("redis://127.0.0.1:1"); err == nil {
 		t.Fatal("expected error for an unreachable redis")

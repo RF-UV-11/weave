@@ -104,7 +104,7 @@ func main() {
 
 	healthServer := health.NewServer()
 	healthv1.RegisterHealthServer(grpcServer, healthServer)
-	healthServer.SetServingStatus("", healthv1.HealthCheckResponse_SERVING)
+	go runHealthLoop(healthServer, limiter)
 
 	reflection.Register(grpcServer)
 
