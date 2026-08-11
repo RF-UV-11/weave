@@ -1,0 +1,108 @@
+"""The planner -> specialist-agent -> tool-call state machine from
+docs/architecture/ARCHITECTURE.md §2's sequence diagram, as a small
+LangGraph graph.
+
+Scope, deliberately minimal for Phase 3's proof (PLAN.md): at most one
+tool call per turn. This graph's only job is *deciding* whether a tool is
+needed and, if so, executing it — it never generates the user-visible
+answer itself. That's `chat_service.py`'s job, via a single real
+streaming call on whatever message list this graph settles on, so the
+model is never asked to generate the same answer content twice (once to
+decide, once to stream).
+"""
+
+from typing import Any, TypedDict
+
+from langgraph.graph import END, StateGraph
+
+from llm.ollama_client import ToolCall, chat
+from mcp_client import call_tool
+from tools.assembly import AssembledTool
+
+
+class ChatState(TypedDict):
+    messages: list[dict[str, str]]
+    available_tools: list[AssembledTool]
+    tool_used: str
+    connector_used: str
+    pending_call: ToolCall | None
+
+
+def _tool_choices(tools: list[AssembledTool]) -> list[tuple[str, str, dict[str, Any]]]:
+    return [(t.tool.name, t.tool.description, t.tool.input_schema) for t in tools]
+
+
+async def _agent_node(state: ChatState) -> dict[str, Any]:
+    if not state["available_tools"]:
+        return {"pending_call": None}
+
+    result = await chat(state["messages"], tools=_tool_choices(state["available_tools"]))
+    if result.tool_calls:
+        return {"pending_call": result.tool_calls[0]}
+
+    # No tool needed — result.content is discarded on purpose. This call
+    # only ever exists to make the tool-or-not decision; the actual
+    # user-visible answer is generated exactly once, by a real streaming
+    # call in chat_service.py, on state["messages"] as-is.
+    return {"pending_call": None}
+
+
+async def _tool_node(state: ChatState) -> dict[str, Any]:
+    call = state["pending_call"]
+    assert call is not None
+    match = next((t for t in state["available_tools"] if t.tool.name == call.name), None)
+
+    if match is None:
+        # The model hallucinated a tool name that isn't in the assembled
+        # set — tell it so plainly rather than crashing the turn.
+        tool_message = {"role": "tool", "content": f"Tool {call.name!r} is not available."}
+        connector_used = ""
+    else:
+        result_text = await call_tool(match.endpoint, call.name, call.arguments)
+        # The tool's description travels with its result — the model
+        # (and, via ChatStreamResponse.tool_used, the caller) never sees
+        # a raw result without knowing what the tool claims to do
+        # (PLAN.md's tool-description requirement, ARCHITECTURE.md §3).
+        tool_message = {
+            "role": "tool",
+            "content": f"{match.tool.description}\n\nResult: {result_text}",
+        }
+        connector_used = match.connector_name
+
+    return {
+        "messages": [*state["messages"], tool_message],
+        "tool_used": call.name,
+        "connector_used": connector_used,
+    }
+
+
+def _route_after_agent(state: ChatState) -> str:
+    return "tool" if state.get("pending_call") is not None else END
+
+
+def build_graph():
+    graph = StateGraph(ChatState)
+    graph.add_node("agent", _agent_node)
+    graph.add_node("tool", _tool_node)
+    graph.set_entry_point("agent")
+    graph.add_conditional_edges("agent", _route_after_agent, {"tool": "tool", END: END})
+    graph.add_edge("tool", END)
+    return graph.compile()
+
+
+_GRAPH = build_graph()
+
+
+async def run_turn(messages: list[dict[str, str]], available_tools: list[AssembledTool]) -> ChatState:
+    """Decides whether a tool is needed and, if so, calls it. Returns the
+    final state — state["messages"] is ready for the caller to stream a
+    real answer from (see chat_service.py), and state["tool_used"]/
+    ["connector_used"] are set if a tool was called."""
+    initial: ChatState = {
+        "messages": messages,
+        "available_tools": available_tools,
+        "tool_used": "",
+        "connector_used": "",
+        "pending_call": None,
+    }
+    return await _GRAPH.ainvoke(initial)
