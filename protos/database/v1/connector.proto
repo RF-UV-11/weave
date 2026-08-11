@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package database.v1;
+
+option go_package = "weave/core/gen/database/v1;databasev1";
+
+// is_collection: true
+// Mongo collection "connectors", owned by core/mongodb/connector.go.
+message Connector {
+  // buf:lint:ignore FIELD_LOWER_SNAKE_CASE
+  string _id = 1;
+  string tenant_id = 2;
+  string name = 3;
+  // "http" | "stdio" (see docs/architecture/SECURITY.md §4 for transport rules)
+  string transport = 4;
+  string endpoint = 5;
+  string credential_ref_id = 6;
+  // JSON-encoded tools/list result from the connector's MCP server, cached
+  // by RefreshManifest. Empty until first refreshed.
+  string capability_manifest = 7;
+  // "pending" | "active" | "error"
+  string status = 8;
+  string created_at = 9;
+  string manifest_refreshed_at = 10;
+}

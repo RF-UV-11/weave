@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package core.data_access.v1;
+
+import "database/v1/common.proto";
+import "database/v1/connector.proto";
+
+option go_package = "weave/core/gen/core/data_access/v1;dataaccessv1";
+
+message RegisterConnectorRequest {
+  string tenant_id = 1;
+  string name = 2;
+  string transport = 3;
+  string endpoint = 4;
+  // Plaintext credential secret (API key, token, ...). Encrypted at rest
+  // immediately; never stored or logged in plaintext. Optional — some
+  // connectors need no credential.
+  string credential_secret = 5;
+}
+
+message RegisterConnectorResponse {
+  database.v1.Connector connector = 1;
+}
+
+message ListConnectorsRequest {
+  string tenant_id = 1;
+  database.v1.PageRequest page = 2;
+}
+
+message ListConnectorsResponse {
+  repeated database.v1.Connector connectors = 1;
+  database.v1.PageResponse page = 2;
+}
+
+message RefreshManifestRequest {
+  string tenant_id = 1;
+  string connector_id = 2;
+}
+
+message RefreshManifestResponse {
+  database.v1.Connector connector = 1;
+}
+
+message DeregisterConnectorRequest {
+  string tenant_id = 1;
+  string connector_id = 2;
+}
+
+message DeregisterConnectorResponse {}
+
+service ConnectorService {
+  rpc RegisterConnector(RegisterConnectorRequest) returns (RegisterConnectorResponse);
+  rpc ListConnectors(ListConnectorsRequest) returns (ListConnectorsResponse);
+  rpc RefreshManifest(RefreshManifestRequest) returns (RefreshManifestResponse);
+  rpc DeregisterConnector(DeregisterConnectorRequest) returns (DeregisterConnectorResponse);
+}
