@@ -1,7 +1,11 @@
 package mongodb
 
 var ColNames = struct {
-	Tenants string
+	Tenants     string
+	Connectors  string
+	Credentials string
 }{
-	Tenants: "tenants",
+	Tenants:     "tenants",
+	Connectors:  "connectors",
+	Credentials: "credentials",
 }
