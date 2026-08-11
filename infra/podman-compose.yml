@@ -61,6 +61,9 @@ services:
       MONGO_URI: mongodb://mongo:27017
       MONGO_DB_NAME: weave
       GRPC_ADDR: ":9090"
+      # Dev-only key, generate your own with `openssl rand -base64 32` for
+      # anything beyond local dev. See docs/architecture/SECURITY.md §3.
+      VAULT_ROOT_KEY: "5eJ9k0h2xW1qzT7yD3mN8pR4sL6vC9bA0fG2hJ5kM8o="
     ports:
       - "9090:9090"
     depends_on:

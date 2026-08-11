@@ -12,7 +12,9 @@ import (
 	"weave/core/configs"
 	dataaccessv1 "weave/core/gen/core/data_access/v1"
 	"weave/core/mongodb"
+	"weave/core/rpc_services/connector"
 	"weave/core/rpc_services/tenant"
+	"weave/core/vault"
 )
 
 func main() {
@@ -22,6 +24,11 @@ func main() {
 		log.Fatalf("mongodb: %v", err)
 	}
 
+	v, err := vault.New(cfg.VaultRootKey)
+	if err != nil {
+		log.Fatalf("vault: %v", err)
+	}
+
 	lis, err := net.Listen("tcp", cfg.GRPCAddr)
 	if err != nil {
 		log.Fatalf("listen: %v", err)
@@ -29,6 +36,7 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 	dataaccessv1.RegisterTenantServiceServer(grpcServer, tenant.NewServer())
+	dataaccessv1.RegisterConnectorServiceServer(grpcServer, connector.NewServer(v))
 
 	healthServer := health.NewServer()
 	healthv1.RegisterHealthServer(grpcServer, healthServer)
