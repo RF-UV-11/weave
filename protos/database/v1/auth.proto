@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package database.v1;
+
+option go_package = "weave/core/gen/database/v1;databasev1";
+
+// Tenant-scoped RBAC role. A role check is always "role X within tenant Y"
+// (docs/architecture/SECURITY.md §5) — never a bare global role.
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_OWNER = 1;
+  ROLE_ADMIN = 2;
+  ROLE_STAFF = 3;
+  ROLE_CUSTOMER = 4;
+}
+
+// is_collection: true
+// Mongo collection "users", owned by core/mongodb/auth.go.
+message User {
+  // buf:lint:ignore FIELD_LOWER_SNAKE_CASE
+  string _id = 1;
+  string tenant_id = 2;
+  string email = 3;
+  // bcrypt hash, never the plaintext password.
+  string password_hash = 4;
+  Role role = 5;
+  string created_at = 6;
+}

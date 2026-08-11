@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package database.v1;
+
+import "database/v1/auth.proto";
+
+option go_package = "weave/core/gen/database/v1;databasev1";
+
+// is_collection: true
+// Mongo collection "bot_profiles", owned by core/mongodb/bot_profile.go.
+message BotProfile {
+  // buf:lint:ignore FIELD_LOWER_SNAKE_CASE
+  string _id = 1;
+  string tenant_id = 2;
+  // Unique per tenant, e.g. "external", "internal".
+  string name = 3;
+  // Path/ref to the persona system prompt, e.g. "personas/external.md".
+  string persona = 4;
+  repeated string connector_ids = 5;
+  repeated string channels = 6;
+  repeated Role roles_allowed = 7;
+  string created_at = 8;
+}

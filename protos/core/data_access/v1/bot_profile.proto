@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package core.data_access.v1;
+
+import "database/v1/auth.proto";
+import "database/v1/bot_profile.proto";
+
+option go_package = "weave/core/gen/core/data_access/v1;dataaccessv1";
+
+message CreateBotProfileRequest {
+  string tenant_id = 1;
+  string name = 2;
+  string persona = 3;
+  repeated string connector_ids = 4;
+  repeated string channels = 5;
+  repeated database.v1.Role roles_allowed = 6;
+}
+
+message CreateBotProfileResponse {
+  database.v1.BotProfile bot_profile = 1;
+}
+
+message GetActiveBotProfileRequest {
+  string tenant_id = 1;
+  string channel = 2;
+}
+
+message GetActiveBotProfileResponse {
+  database.v1.BotProfile bot_profile = 1;
+}
+
+service BotProfileService {
+  rpc CreateBotProfile(CreateBotProfileRequest) returns (CreateBotProfileResponse);
+  rpc GetActiveBotProfile(GetActiveBotProfileRequest) returns (GetActiveBotProfileResponse);
+}

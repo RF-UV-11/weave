@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package core.data_access.v1;
+
+import "database/v1/auth.proto";
+
+option go_package = "weave/core/gen/core/data_access/v1;dataaccessv1";
+
+message RegisterRequest {
+  string tenant_id = 1;
+  string email = 2;
+  string password = 3;
+  database.v1.Role role = 4;
+}
+
+message RegisterResponse {
+  database.v1.User user = 1;
+}
+
+message LoginRequest {
+  string tenant_id = 1;
+  string email = 2;
+  string password = 3;
+}
+
+message LoginResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  database.v1.User user = 3;
+}
+
+message RefreshRequest {
+  string refresh_token = 1;
+}
+
+message RefreshResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+}
+
+service AuthService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc Refresh(RefreshRequest) returns (RefreshResponse);
+}
