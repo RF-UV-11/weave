@@ -69,6 +69,15 @@ services:
       REDIS_URI: "redis://redis:6379"
     ports:
       - "9090:9090"
+    healthcheck:
+      # distroless has no shell, so this is a static Go binary
+      # (grpc-health-probe) speaking the standard gRPC health protocol,
+      # not a CMD-SHELL script like the other services here.
+      test: ["CMD", "/grpc-health-probe", "-addr=:9090"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     depends_on:
       mongo:
         condition: service_healthy
