@@ -65,7 +65,22 @@ How to use this file: work top to bottom, don't start a phase until the previous
 - Caught in verification, not design: `Register`/`Login` were echoing the bcrypt `password_hash` back in the response `User` — harmless (not reversible) but needless exposure, fixed by redacting it before the RPC boundary.
 - Found and fixed a real flake in the *existing* test suite while adding Phase 2 tests: `go test ./...` runs packages concurrently, and every package's `TestMain` was connecting to the same `weave_core_test` Mongo database — one package's teardown `Drop()` could wipe another package's still-running data. Each package now uses its own database name (`weave_core_test_mongodb`, `_connector`, `_tenant`, `_auth`, `_bot_profile`).
 
+---
+
+## Cross-cutting — Rate limiting & abuse defense
+
+**Goal**: every RPC on `core` has a DDoS/brute-force/abuse defense baseline, independent of and ahead of auth. Not a phase in the tenant-facing feature sense — a security requirement applied across whatever phase is currently landing.
+
+- [x] `packages/shared-ratelimit` (Go) — Redis-backed fixed-window limiter + gRPC interceptor, per-method limits, fails open on Redis outage
+- [x] Wired into `core/main.go` via `grpc.ChainUnaryInterceptor`, ahead of the auth interceptor (unauthenticated RPCs like `Login` need protection too)
+- [x] Tight limits on `Login`/`Register` (brute-force/spam targets), generous default elsewhere, health/reflection exempt
+
+**Definition of done**: ✅ **met.** Hammered `Login` with 7 back-to-back `grpcurl` calls from the same client: the first 5 succeeded (returning the expected `Unauthenticated` for bad credentials), the 6th and 7th returned `ResourceExhausted`. Confirmed `CreateTenant` (a different method) was unaffected by `Login`'s exhausted budget — limits are per-method, not global.
+
 **Notes**:
+- Full design rationale lives in `docs/architecture/SECURITY.md` §5, including the deliberate choice not to trust a client-supplied `x-forwarded-for` header.
+- **Real bug caught in live verification, not by unit tests**: the first implementation keyed on the full peer address (`ip:port`). Every gRPC call is its own TCP connection with a fresh ephemeral source port, so that key gave every single request a "new" bucket — rate limiting was silently a no-op end-to-end despite 10 passing unit tests, because every test reused one hardcoded port across all calls. Fixed by stripping the port (`net.SplitHostPort`), and added a regression test that varies the port across calls to catch this class of bug going forward. Lesson: a passing unit-test suite for a network-keyed system doesn't substitute for testing against real, varying connections.
+- This is distinct from a future tenant-plan usage quota (business rule, keyed by `tenant_id`, layered on top once identity is known) — see the Parking lot / productization discussion below.
 
 ---
 

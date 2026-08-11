@@ -67,7 +67,19 @@ Since `orchestrator` makes outbound calls to arbitrary tenant-hosted MCP servers
 
 ---
 
-## 5. Auth
+## 5. Rate limiting & abuse defense
+
+Every RPC on `core` is rate-limited — not just tenant-plan usage quotas (a business concern, not yet built), but a network-level defensive baseline against flooding, brute-force, and credential-stuffing attacks. Implemented in `packages/shared-ratelimit`, applied server-wide in `core/main.go` via `grpc.ChainUnaryInterceptor`, **ahead of** the auth interceptor in the chain — an attacker flooding `Login` has no token yet, so the limit has to apply regardless of auth state.
+
+- **Fixed-window counter in Redis** (`INCR` + `PEXPIRE` on first hit), keyed per method so one endpoint's traffic can't exhaust another's budget.
+- **Keyed by the raw gRPC peer IP** (source port stripped — every new TCP connection gets a fresh ephemeral port, so keying on the full `ip:port` silently disables the limit; this was a real bug caught in live verification, not design). Deliberately does **not** trust a client-supplied `x-forwarded-for` header — an attacker can rotate that value on every request and evade the limit entirely. **Known gap**: once `core` sits behind a real reverse proxy (the Envoy grpc-web proxy from `ARCHITECTURE.md`), every caller behind it shares the proxy's peer address unless the proxy is configured to forward a verified client IP over a trusted channel (e.g. PROXY protocol) — that's deployment infra, tracked as a follow-up, not solved by trusting an unverifiable header today.
+- **Login/Register get the tightest limits** (5/min, 10/hour respectively) since they're the classic brute-force/spam target; everything else gets a generous default (120/min); health/reflection are exempt so infra healthchecks and `grpcurl` introspection keep working.
+- **Fails open on a Redis outage** — rate limiting is defense in depth, not the only line of defense; a Redis blip degrading to "temporarily unprotected" is preferable to it taking `core` down entirely.
+- Distinct from a future tenant-plan usage quota (e.g. "Acme Clinic's plan allows 10k requests/day"), which is a business rule keyed by `tenant_id` and layered on top once a caller's identity is resolved — this section is purely the DDoS/abuse defense baseline that applies to every caller, authenticated or not.
+
+---
+
+## 6. Auth
 
 - **JWT**: short-lived access token + rotated refresh token, issued by `core`'s auth domain. Carried in gRPC metadata on every call.
 - **RBAC roles are tenant-scoped**: a role check is always "role X within tenant Y," enforced by a shared interceptor — never a bare global role.
@@ -76,7 +88,7 @@ Since `orchestrator` makes outbound calls to arbitrary tenant-hosted MCP servers
 
 ---
 
-## 6. Data protection
+## 7. Data protection
 
 - Encryption in transit everywhere (TLS on every external hop; internal gRPC over the cluster network, mTLS as a hardening target once the platform has real tenants).
 - Encryption at rest for MongoDB, Redis persistence, and MinIO.
@@ -84,12 +96,12 @@ Since `orchestrator` makes outbound calls to arbitrary tenant-hosted MCP servers
 
 ---
 
-## 7. Auditability
+## 8. Auditability
 
 Every planner decision, tool call, and MCP round trip is a traced span (Langfuse/OpenTelemetry) tagged with `tenant_id`, `bot_profile`, `user_id`, and `connector_id` where applicable — a tenant (or Weave's own operators) can reconstruct exactly which connector served which answer, and when a credential was used.
 
 ---
 
-## 8. Compliance posture (target, not yet achieved)
+## 9. Compliance posture (target, not yet achieved)
 
 Before onboarding real business tenants with sensitive systems, this platform needs: a documented data-processing agreement model, data-residency options, SOC2-track controls, and a published `SECURITY.md`-equivalent vulnerability disclosure process for the hosted product (distinct from this design doc). Tracked as a pre-requisite for any paid/production tenant, not assumed to already be true.
