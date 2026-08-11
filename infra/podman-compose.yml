@@ -66,10 +66,13 @@ services:
       VAULT_ROOT_KEY: "5eJ9k0h2xW1qzT7yD3mN8pR4sL6vC9bA0fG2hJ5kM8o="
       # Dev-only secret — generate your own for anything beyond local dev.
       JWT_SECRET: "dev-only-jwt-secret-do-not-use-in-prod"
+      REDIS_URI: "redis://redis:6379"
     ports:
       - "9090:9090"
     depends_on:
       mongo:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:

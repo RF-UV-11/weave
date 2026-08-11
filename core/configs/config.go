@@ -8,6 +8,7 @@ type Vars struct {
 	GRPCAddr     string
 	VaultRootKey string
 	JWTSecret    string
+	RedisURI     string
 }
 
 func Load() Vars {
@@ -17,6 +18,7 @@ func Load() Vars {
 		GRPCAddr:     getenv("GRPC_ADDR", ":9090"),
 		VaultRootKey: getenv("VAULT_ROOT_KEY", ""),
 		JWTSecret:    getenv("JWT_SECRET", ""),
+		RedisURI:     getenv("REDIS_URI", "redis://localhost:6379"),
 	}
 }
 

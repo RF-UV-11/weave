@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -18,6 +19,7 @@ import (
 	"weave/core/rpc_services/tenant"
 	"weave/core/vault"
 	sharedauth "weave/packages/shared-auth"
+	ratelimit "weave/packages/shared-ratelimit"
 )
 
 // unauthenticatedMethods are exempt from the JWT interceptor: the auth
@@ -43,6 +45,25 @@ var unauthenticatedMethods = []string{
 	"/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo",
 }
 
+// rateLimitExempt is health/reflection only — unlike auth, EVERY RPC
+// (including Login/Register) gets rate-limited; those two get the
+// tightest limits of all, since they're the classic brute-force/spam
+// target (docs/architecture/SECURITY.md §4's DDoS/abuse defense).
+var rateLimitExempt = []string{
+	"/grpc.health.v1.Health/Check",
+	"/grpc.health.v1.Health/Watch",
+	"/grpc.reflection.v1.ServerReflection/ServerReflectionInfo",
+	"/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo",
+}
+
+var rateLimits = ratelimit.MethodLimits{
+	"/core.data_access.v1.AuthService/Login":    {Limit: 5, Window: time.Minute},
+	"/core.data_access.v1.AuthService/Register": {Limit: 10, Window: time.Hour},
+	"/core.data_access.v1.AuthService/Refresh":  {Limit: 20, Window: time.Minute},
+}
+
+var defaultRateLimit = ratelimit.Config{Limit: 120, Window: time.Minute}
+
 func main() {
 	cfg := configs.Load()
 
@@ -60,13 +81,21 @@ func main() {
 	}
 	jwtSecret := []byte(cfg.JWTSecret)
 
+	limiter, err := ratelimit.New(cfg.RedisURI)
+	if err != nil {
+		log.Fatalf("ratelimit: %v", err)
+	}
+
 	lis, err := net.Listen("tcp", cfg.GRPCAddr)
 	if err != nil {
 		log.Fatalf("listen: %v", err)
 	}
 
 	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(sharedauth.UnaryServerInterceptor(jwtSecret, unauthenticatedMethods...)),
+		grpc.ChainUnaryInterceptor(
+			ratelimit.UnaryServerInterceptor(limiter, rateLimits, defaultRateLimit, rateLimitExempt...),
+			sharedauth.UnaryServerInterceptor(jwtSecret, unauthenticatedMethods...),
+		),
 	)
 	dataaccessv1.RegisterTenantServiceServer(grpcServer, tenant.NewServer())
 	dataaccessv1.RegisterConnectorServiceServer(grpcServer, connector.NewServer(v))

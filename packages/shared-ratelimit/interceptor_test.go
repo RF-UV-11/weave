@@ -13,7 +13,11 @@ import (
 )
 
 func withPeer(ctx context.Context, addr string) context.Context {
-	return peer.NewContext(ctx, &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP(addr), Port: 12345}})
+	return withPeerPort(ctx, addr, 12345)
+}
+
+func withPeerPort(ctx context.Context, addr string, port int) context.Context {
+	return peer.NewContext(ctx, &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP(addr), Port: port}})
 }
 
 func okHandler(ctx context.Context, req any) (any, error) {
@@ -47,6 +51,31 @@ func TestInterceptorRejectsOverLimit(t *testing.T) {
 	_, err := interceptor(ctx, nil, info, okHandler)
 	if status.Code(err) != codes.ResourceExhausted {
 		t.Fatalf("expected ResourceExhausted, got %v", err)
+	}
+}
+
+// A regression test for a real bug caught in live verification: each
+// gRPC call in production arrives on its own TCP connection with a fresh
+// ephemeral source port, so keying on the *full* peer address (ip:port)
+// instead of just the IP silently disabled rate limiting entirely — every
+// call looked like a "new" client. Every call here uses a different port,
+// exactly like separate real connections from the same attacker IP would.
+func TestInterceptorTracksSameIPAcrossDifferentSourcePorts(t *testing.T) {
+	l := newTestLimiter(t)
+	interceptor := UnaryServerInterceptor(l, nil, Config{Limit: 2, Window: time.Minute})
+	info := &grpc.UnaryServerInfo{FullMethod: "/some.Service/Method"}
+
+	for i, port := range []int{40001, 40002} {
+		ctx := withPeerPort(context.Background(), "10.0.0.9", port)
+		if _, err := interceptor(ctx, nil, info, okHandler); err != nil {
+			t.Fatalf("request %d (port %d): %v", i+1, port, err)
+		}
+	}
+
+	ctx := withPeerPort(context.Background(), "10.0.0.9", 40003)
+	_, err := interceptor(ctx, nil, info, okHandler)
+	if status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("expected the same IP on a 3rd distinct port to still be rate-limited, got %v", err)
 	}
 }
 

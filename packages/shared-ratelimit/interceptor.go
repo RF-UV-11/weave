@@ -3,6 +3,7 @@ package ratelimit
 import (
 	"context"
 	"fmt"
+	"net"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -56,7 +57,11 @@ func UnaryServerInterceptor(l *Limiter, limits MethodLimits, defaultLimit Config
 }
 
 // clientKey identifies the caller for rate-limiting purposes: the TCP
-// peer address gRPC itself observed.
+// peer's IP address, with the ephemeral source port stripped — every new
+// TCP connection gets a fresh random port, so keying on the full
+// "ip:port" address (as p.Addr.String() returns) would give an attacker a
+// fresh rate-limit bucket on every single connection, silently disabling
+// the limit entirely.
 //
 // Deliberately does NOT read "x-forwarded-for" or any other client-
 // supplied metadata — that header is set by the caller, so trusting it
@@ -70,8 +75,14 @@ func UnaryServerInterceptor(l *Limiter, limits MethodLimits, defaultLimit Config
 // assume here, so it's tracked as a follow-up rather than solved by
 // trusting an unverifiable header today.
 func clientKey(ctx context.Context) string {
-	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+	p, ok := peer.FromContext(ctx)
+	if !ok || p.Addr == nil {
+		return "unknown"
+	}
+	host, _, err := net.SplitHostPort(p.Addr.String())
+	if err != nil {
+		// Not a "host:port" address (e.g. a unix socket) — use it as-is.
 		return p.Addr.String()
 	}
-	return "unknown"
+	return host
 }
