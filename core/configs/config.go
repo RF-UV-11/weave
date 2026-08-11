@@ -7,6 +7,7 @@ type Vars struct {
 	MongoDBName  string
 	GRPCAddr     string
 	VaultRootKey string
+	JWTSecret    string
 }
 
 func Load() Vars {
@@ -15,6 +16,7 @@ func Load() Vars {
 		MongoDBName:  getenv("MONGO_DB_NAME", "weave"),
 		GRPCAddr:     getenv("GRPC_ADDR", ":9090"),
 		VaultRootKey: getenv("VAULT_ROOT_KEY", ""),
+		JWTSecret:    getenv("JWT_SECRET", ""),
 	}
 }
 

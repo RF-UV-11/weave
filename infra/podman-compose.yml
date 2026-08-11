@@ -64,6 +64,8 @@ services:
       # Dev-only key, generate your own with `openssl rand -base64 32` for
       # anything beyond local dev. See docs/architecture/SECURITY.md §3.
       VAULT_ROOT_KEY: "5eJ9k0h2xW1qzT7yD3mN8pR4sL6vC9bA0fG2hJ5kM8o="
+      # Dev-only secret — generate your own for anything beyond local dev.
+      JWT_SECRET: "dev-only-jwt-secret-do-not-use-in-prod"
     ports:
       - "9090:9090"
     depends_on:
