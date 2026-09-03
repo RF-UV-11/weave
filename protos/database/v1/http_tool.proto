@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package database.v1;
+
+option go_package = "weave/core/gen/database/v1;databasev1";
+
+// is_collection: true
+// Mongo collection "http_tools", owned by core/mongodb/http_tool.go.
+//
+// An HttpTool is how a business registers a plain HTTP API as a tool
+// without running their own MCP server (docs/architecture/ARCHITECTURE.md
+// §3's "always real MCP" decision: mcp-gateway is what turns this
+// definition into genuine MCP protocol on the wire — this message is
+// never itself served directly to orchestrator).
+message HttpTool {
+  // buf:lint:ignore FIELD_LOWER_SNAKE_CASE
+  string _id = 1;
+  string tenant_id = 2;
+  // The tenant's single auto-created "weave_managed" Connector — see
+  // core/mongodb/http_tool.go's GetOrCreateManagedConnector.
+  string connector_id = 3;
+  // Unique per tenant. Exposed to the LLM as the callable tool's name.
+  string name = 4;
+  // Mandatory — same tool-description requirement as MCP-native tools
+  // (docs/architecture/ARCHITECTURE.md §3, enforced here at registration
+  // rather than at manifest-refresh time since there's no real MCP
+  // server whose tools/list to validate).
+  string description = 5;
+  string http_endpoint = 6;
+  // "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+  string http_method = 7;
+  // JSON Schema (as a JSON-encoded string) describing the tool's
+  // parameters — mirrors an MCP tool's inputSchema.
+  string params_schema = 8;
+  // Optional — empty if the business's endpoint needs no credential.
+  // Same vault as MCP connector credentials (docs/architecture/SECURITY.md §3).
+  string credential_ref_id = 9;
+  string created_at = 10;
+}

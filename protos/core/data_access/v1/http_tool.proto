@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package core.data_access.v1;
+
+import "database/v1/common.proto";
+import "database/v1/http_tool.proto";
+
+option go_package = "weave/core/gen/core/data_access/v1;dataaccessv1";
+
+message RegisterHttpToolRequest {
+  string tenant_id = 1;
+  string name = 2;
+  string description = 3;
+  string http_endpoint = 4;
+  string http_method = 5;
+  string params_schema = 6;
+  // Plaintext credential secret for calling http_endpoint, if any.
+  // Encrypted at rest immediately, same as RegisterConnector's
+  // credential_secret — never stored or logged in plaintext.
+  string credential_secret = 7;
+}
+
+message RegisterHttpToolResponse {
+  database.v1.HttpTool http_tool = 1;
+}
+
+message ListHttpToolsRequest {
+  string tenant_id = 1;
+  database.v1.PageRequest page = 2;
+}
+
+message ListHttpToolsResponse {
+  repeated database.v1.HttpTool http_tools = 1;
+  database.v1.PageResponse page = 2;
+}
+
+message DeregisterHttpToolRequest {
+  string tenant_id = 1;
+  string http_tool_id = 2;
+}
+
+message DeregisterHttpToolResponse {}
+
+message RevealHttpToolCredentialRequest {
+  string tenant_id = 1;
+  string http_tool_id = 2;
+}
+
+message RevealHttpToolCredentialResponse {
+  // Empty if the tool has no credential_ref_id.
+  string secret = 1;
+}
+
+service HttpToolService {
+  rpc RegisterHttpTool(RegisterHttpToolRequest) returns (RegisterHttpToolResponse);
+  rpc ListHttpTools(ListHttpToolsRequest) returns (ListHttpToolsResponse);
+  rpc DeregisterHttpTool(DeregisterHttpToolRequest) returns (DeregisterHttpToolResponse);
+  // Internal-service-only RPC: mcp-gateway calls this to get the
+  // plaintext credential needed to actually call a business's HTTP
+  // endpoint on their behalf. This is the "dedicated reveal path"
+  // docs/architecture/SECURITY.md §3 flagged as not yet existing back in
+  // Phase 1 — it exists now, gated the same (interim) way as
+  // ListHttpTools: no per-user JWT, since the caller is trusted internal
+  // infra, not acting for a specific end user. Real service-to-service
+  // auth (mTLS or a service token) is a hardening follow-up, same
+  // category as the vault's other known gaps.
+  rpc RevealHttpToolCredential(RevealHttpToolCredentialRequest) returns (RevealHttpToolCredentialResponse);
+}
