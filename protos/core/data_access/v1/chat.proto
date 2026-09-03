@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package core.data_access.v1;
+
+import "database/v1/chat.proto";
+
+option go_package = "weave/core/gen/core/data_access/v1;dataaccessv1";
+
+message CreateSessionRequest {
+  string tenant_id = 1;
+  string user_id = 2;
+  string bot_profile_id = 3;
+  string channel = 4;
+}
+
+message CreateSessionResponse {
+  database.v1.ChatSession session = 1;
+}
+
+message AppendMessageRequest {
+  string tenant_id = 1;
+  string session_id = 2;
+  string role = 3;
+  string content = 4;
+  string tool_used = 5;
+  string connector_used = 6;
+}
+
+message AppendMessageResponse {
+  database.v1.ChatMessage message = 1;
+}
+
+message GetSessionMessagesRequest {
+  string tenant_id = 1;
+  string session_id = 2;
+  // Most recent N messages, oldest-first in the response. 0 means a
+  // server-side default (see core/rpc_services/chat).
+  int32 limit = 3;
+}
+
+message GetSessionMessagesResponse {
+  repeated database.v1.ChatMessage messages = 1;
+}
+
+service ChatService {
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+  rpc AppendMessage(AppendMessageRequest) returns (AppendMessageResponse);
+  rpc GetSessionMessages(GetSessionMessagesRequest) returns (GetSessionMessagesResponse);
+}

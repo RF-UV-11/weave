@@ -15,6 +15,7 @@ import (
 	"weave/core/mongodb"
 	"weave/core/rpc_services/auth"
 	"weave/core/rpc_services/bot_profile"
+	"weave/core/rpc_services/chat"
 	"weave/core/rpc_services/connector"
 	"weave/core/rpc_services/http_tool"
 	"weave/core/rpc_services/tenant"
@@ -109,6 +110,7 @@ func main() {
 	dataaccessv1.RegisterAuthServiceServer(grpcServer, auth.NewServer(jwtSecret))
 	dataaccessv1.RegisterBotProfileServiceServer(grpcServer, botprofile.NewServer())
 	dataaccessv1.RegisterHttpToolServiceServer(grpcServer, httptool.NewServer(v, cfg.MCPGatewayURL, net.DefaultResolver, cfg.AllowPrivateEndpoints))
+	dataaccessv1.RegisterChatServiceServer(grpcServer, chat.NewServer())
 
 	healthServer := health.NewServer()
 	healthv1.RegisterHealthServer(grpcServer, healthServer)

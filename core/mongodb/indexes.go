@@ -64,5 +64,20 @@ func EnsureIndexes(ctx context.Context) error {
 		return err
 	}
 
+	// A session's messages are always fetched by (tenant_id, session_id)
+	// together, then ordered by creation time.
+	if _, err := Db.Db.Collection(ColNames.ChatSessions).Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "tenant_id", Value: 1}, {Key: "_id", Value: 1}},
+	}); err != nil {
+		return err
+	}
+	if _, err := Db.Db.Collection(ColNames.ChatMessages).Indexes().CreateOne(ctx, mongo.IndexModel{
+		// _id (a ULID, so also creation-ordered), not created_at — see
+		// mongodb/chat.go's GetSessionMessages for why.
+		Keys: bson.D{{Key: "tenant_id", Value: 1}, {Key: "session_id", Value: 1}, {Key: "_id", Value: 1}},
+	}); err != nil {
+		return err
+	}
+
 	return nil
 }

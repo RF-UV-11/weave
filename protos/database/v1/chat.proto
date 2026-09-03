@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package database.v1;
+
+option go_package = "weave/core/gen/database/v1;databasev1";
+
+// is_collection: true
+// Mongo collection "chat_sessions", owned by core/mongodb/chat.go.
+//
+// Short-term/session memory (docs/architecture/ARCHITECTURE.md §5): one
+// document per conversation. orchestrator creates a session on the first
+// turn (no session_id on the incoming request) and reuses it on every
+// subsequent turn the caller sends the returned session_id back on —
+// orchestrator never holds this state itself, only core does.
+message ChatSession {
+  // buf:lint:ignore FIELD_LOWER_SNAKE_CASE
+  string _id = 1;
+  string tenant_id = 2;
+  string user_id = 3;
+  string bot_profile_id = 4;
+  string channel = 5;
+  string created_at = 6;
+  string updated_at = 7;
+}
+
+// is_collection: true
+// Mongo collection "chat_messages", owned by core/mongodb/chat.go.
+message ChatMessage {
+  // buf:lint:ignore FIELD_LOWER_SNAKE_CASE
+  string _id = 1;
+  string tenant_id = 2;
+  string session_id = 3;
+  // "user" | "assistant" | "tool"
+  string role = 4;
+  string content = 5;
+  // Empty unless this turn called a tool.
+  string tool_used = 6;
+  string connector_used = 7;
+  string created_at = 8;
+}
