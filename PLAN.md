@@ -213,6 +213,7 @@ How to use this file: work top to bottom, don't start a phase until the previous
 - **The SSRF guard (`core/netguard`, `docs/architecture/SECURITY.md` §4) correctly rejected the demo vendor's own `localhost` endpoint** the first time `setup_weave.py` ran, exactly as designed — this is a legitimate local-dev connector, so verification re-ran `core` with `ALLOW_PRIVATE_ENDPOINTS=true`, the documented opt-out for exactly this case. Not a bug; confirms the guard is live and enforced, not just unit-tested.
 - Demo vendor's own field-level design choice: `ORDERS`' `supplier`/`cost_basis_usd` fields exist only in the internal `/internal/orders/{id}` route's response, never as extra fields on the external `/orders/{id}/status` route — the "mark specific fields sensitive so they're stripped before returning" approach `SECURITY.md` §7 named as a real follow-up to whole-blob guardrail redaction, done here one level earlier, at the API surface itself.
 - 14 new tests in `connectors/demo-acme-electronics/tests/test_api.py` (all endpoints, 404s, analytics aggregation correctness, and an explicit assertion that the external route never leaks `supplier`/`cost_basis_usd`).
+- **Superseded by Phase 3.9**: keeping tenant-business demo code inside this repo at all (even under `connectors/`) turned out to be the wrong shape — a real tenant's integration lives in *their own* codebase, never Weave's. `connectors/demo-acme-electronics` was removed from this repo; see Phase 3.9 for the corrected external-project structure.
 
 **Session memory definition of done**: ✅ **met.** Live-verified over a real `ChatStream` call (not mocked) against the same running stack: turn 1 ("My name is Jordan. What's the status of order ORD-1001?") got a `session_id` back and correctly called `track_order`; turn 2 ("What is my name?"), sent with that same `session_id`, correctly answered "Jordan" — proving `resolve_session()` actually replayed turn 1's messages into turn 2's context, not just that the RPCs round-trip in isolation.
 
@@ -240,6 +241,59 @@ How to use this file: work top to bottom, don't start a phase until the previous
 - **A real Windows/WSL2 podman networking gap, same class as prior phases' issues (see this doc's own §8 note and earlier `PLAN.md` entries)**: running Envoy as a container on `weave-net` could not reach `orchestrator` (a locally-run process, not yet containerized) even via `host.containers.internal` with `extra_hosts: host-gateway` — DNS resolved to the bridge gateway IP, but the actual TCP connection was refused. Every previously-established container↔container and host↔container path in this repo works fine; only container→host-process was new and broken here. Worked around by running Envoy as a native Windows binary instead (via `func-e`, since Envoy doesn't ship an official Windows container-free distribution any other simple way) — `infra/envoy/envoy.local.yaml` is that variant, documented as a local-dev-only workaround, not a replacement for `envoy.yaml`.
 - **shadcn/ui's `init` defaulted to a Base UI-backed component set** (`@base-ui/react`), not the more commonly-seen Radix-backed one — meaning components use a `render` prop for polymorphism (`<DialogTrigger render={<Button/>}>children</DialogTrigger>`) instead of Radix's `asChild`+`Slot` pattern, and `Select`'s `onValueChange` can hand back `null` (not just `string`). Both differences surfaced as real type-check failures, not stylistic preferences — fixed by using `buttonVariants()` directly on `<Link>` where a nav item needed to look like a button, and by null-guarding every `Select` `onValueChange` handler.
 - A new core RPC, `BotProfileService.ListBotProfiles` (proto + `mongodb.ListBotProfiles` + handler + tests), was added specifically because the admin UI's bot-profile management page needed a real list endpoint — core previously only supported `CreateBotProfile` and `GetActiveBotProfile` (by channel), no way to enumerate a tenant's profiles at all.
+
+---
+
+## Phase 3.9 — Two separate, India-based demo tenants as external projects (plan, not yet started)
+
+**Goal**: demonstrate how Weave is *actually* used — a business's own team, in their own separate codebase, installs the `weave` SDK and connects their existing systems. That means **zero demo-tenant business code lives anywhere in this repo**, not even under `connectors/` (explicit correction from the previous draft of this plan, which had proposed keeping the demos in `connectors/demo-*` — still inside `weave/`). `connectors/` is for Weave's own reference/scaffolding material (`reference-mcp`, `dev-stub-mcp`) — a *tenant's* integration code is never part of the platform repo, by the same logic `ARCHITECTURE.md` §1 already states for tenant-owned MCP servers ("never deployed by Weave's own infrastructure").
+
+**Structure**: two entirely independent projects, each a sibling directory to `weave/` (e.g. `y:\YY\Yuvraj-Dev\tarang-electronics\` and `y:\YY\Yuvraj-Dev\suvidha-finserve\`), each its own git repository — not a folder inside this one. Each installs the `weave` SDK the way a real external integrator would pre-release (an editable/path or git dependency pointing at this repo's `packages/weave-sdk`, since it isn't published to PyPI yet — swap for `pip install weave-sdk` once it is, with zero other code changes). Both are India-based with realistic data, and both are written to double as reference material: someone reading either project's `setup_weave.py` should come away knowing exactly how to integrate `weave` for their own business. Deliberately different domain shapes (retail vs. professional services), so the pair proves the SDK isn't just a "product catalog" pattern.
+
+Decided via explicit user choice: **repurpose the content currently at `connectors/demo-acme-electronics`** into the e-commerce project (rebrand, not delete-and-rebuild) — but relocate it out of `weave/` entirely as part of that repurposing, per the correction above.
+
+### Demo 1 — E-commerce (relocated + repurposed from `connectors/demo-acme-electronics`)
+
+- [ ] `git mv`/relocate the directory's contents out of this repo to a new sibling project (proposed name: **Tarang Electronics** — "Tarang" = "wave" in Hindi, a deliberate nod to the platform name; fictional, not modeled on any real company) — final name/location is the user's call, this is a proposal to confirm before implementation starts.
+- [ ] Remove `connectors/demo-acme-electronics/` from this repo entirely once relocated — no leftover copy in `weave/`.
+- [ ] `git init` the new location as its own repository, independent history from `weave/`.
+- [ ] Rework `data.py`: INR pricing (₹), Indian product catalog (keep the existing shape — laptops/earbuds/headphones/monitors — swap in Indian-market SKUs/brand-flavored names), Indian customer names (e.g. Priya Sharma, Arjun Mehta, Kavya Reddy), Indian addresses (city/state/PIN code), `+91` phone format.
+- [ ] Add GST fields to internal-only order/invoice data (GSTIN, HSN code, CGST/SGST/IGST breakdown) — realistic for an Indian retailer's backend, and a natural way to demonstrate more sensitive internal-only data than the original demo had.
+- [ ] Rework `api.py`: same external/internal route shape (3 external: order status, product info, warranty; 5 internal: customer PII, full order detail incl. GST/cost, inventory, sales analytics, customer-activity analytics) — only the data changes, not the architecture being demonstrated.
+- [ ] Rework `setup_weave.py`: new business name and persona copy in tool descriptions and bot-profile guardrails; installs `weave` via a path/git dependency on `weave/packages/weave-sdk` (documented in this project's own `initialize.sh`, not assumed).
+- [ ] Update `tests/test_api.py` for the new data (same assertions, new fixture values).
+- [ ] Live-verify same as before: real `core`+`mcp-gateway`+demo-API stack (the platform, run from `weave/`), `setup_weave.py` run from the external project, `assemble_tools()` visibility check.
+
+### Demo 2 — Finance/accounting firm (new, external project from the start)
+
+- [ ] New sibling project (proposed name: **Suvidha FinServe** — "Suvidha" = "convenience/facility" in Hindi; fictional), own git repo from the start. A firm offering bookkeeping, GST filing, invoicing, and payroll services to Indian small/medium businesses — its "customers" are other businesses, not individual consumers, a deliberately different shape from the e-commerce demo's retail-to-consumer model.
+- [ ] Realistic canned dataset: a handful of fictional Indian client companies, invoices, GST return filings (period, status, amount), payroll runs, ledger/expense entries.
+- [ ] External tools (visibility="external" — usable by the firm's own clients checking their own account): `check_gst_filing_status`, `get_invoice_status`, `get_payroll_run_status`.
+- [ ] Internal tools (visibility="internal" — staff only): `get_client_financials` (P&L-style detail), `get_ledger_entries`, `get_client_contact_details` (PII); analytics (category="analytics"): `get_revenue_report`, `get_client_retention_report`.
+- [ ] `setup_weave.py`, `initialize.sh`, `pyproject.toml`, `tests/test_api.py` mirroring demo 1's structure exactly (same proven pattern, independently instantiated — no shared module between the two demos, no shared code with `weave/` beyond the SDK dependency itself).
+- [ ] Live-verify the same way as demo 1, independently.
+
+### Realistic end-to-end onboarding flow
+
+Both projects' setup scripts model the **actual sequence a real business goes through**, staged and narrated as distinct steps rather than one opaque script — this is what "professional, technical, how it should behave in real time" means concretely:
+
+1. **Sign up**: `CreateTenant` + `Register` (an owner account) — these are core's real public bootstrap RPCs, unauthenticated by design for exactly this reason (`docs/architecture/SECURITY.md` §6), not a special-cased dev shortcut. This step is already realistic as built; keep it that way rather than replacing it with something demo-only.
+2. **Authenticate**: `Login` → JWT, exactly as any caller (SDK, `web/`, or a hand-rolled integration) would.
+3. **Describe the business's systems**: `weave.connect()` + repeated `add_tool()` calls, each with a real `visibility`/`category` decision made deliberately (which of the business's own endpoints are customer-safe vs. staff-only, which are analytics) — not defaults left unset.
+4. **Shape the bots**: `create_bot_profile()` for each distinct audience (e.g. one external/customer-facing profile with guardrails, one internal/staff profile) — the point where the business decides what each bot can see and say.
+5. **Connect a channel**: the missing step, not yet built anywhere — today nothing actually receives traffic on `web-widget`/`slack`/etc. for these demo tenants; a real tenant would embed the `web/` chat widget on their own site or wire up a Slack app pointed at their `bot_profile`'s channel. Tracked as a real gap for this phase to either close (a minimal embeddable widget or documented Slack wiring) or explicitly scope out with a one-line reason if it's deferred — not silently absent.
+6. **Go live**: end users (the business's own customers or staff) interact through that channel; this is the point every earlier phase's live verification scripts stood in for.
+
+Each demo project's `setup_weave.py` (or a renamed equivalent — `onboard.py` more accurately describes what step 1–4 actually is) should print/log each stage clearly enough that reading its output *is* the tutorial, and its own README should walk through the same six steps in prose, pointing at the exact lines of code doing each one.
+
+### Cross-cutting
+
+- [ ] Both projects' module docstrings/READMEs framed explicitly as "read this to learn how to integrate `weave`" — not just working code, but legible reference material (per the user's stated goal: "anyone who wants to use weave can know how to use it and what to expect").
+- [ ] This repo's own docs updated to reflect the corrected shape: `docs/architecture/ARCHITECTURE.md`/`OVERVIEW.md` should note that demo tenants are external reference projects entirely outside `weave/`, point to where they live, and **not embed their code or business-specific detail here** — same discipline already applied to real tenant MCP servers.
+- [ ] `PLAN.md` definition-of-done entries for both, following this phase's own template once built — recorded here since this *is* Weave's own build log, even though the demo code itself lives elsewhere.
+- [ ] Commit in separate logical chunks: the `weave` repo's side (removing `connectors/demo-acme-electronics`, doc updates) as one commit; each external project gets its own independent commit history in its own repo.
+
+**Not started** — this section is the plan only, per explicit instruction ("first make plan doc"). Implementation begins on confirmation.
 
 ---
 
