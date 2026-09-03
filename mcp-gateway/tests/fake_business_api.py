@@ -9,8 +9,8 @@ import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 ORDERS = {
-    "123": {"status": "shipped", "eta": "2026-08-20"},
-    "456": {"status": "processing", "eta": "2026-08-25"},
+    "123": {"status": "shipped", "eta": "2026-08-20", "supplier": "Acme Wholesale Corp"},
+    "456": {"status": "processing", "eta": "2026-08-25", "supplier": "Acme Wholesale Corp"},
 }
 
 
