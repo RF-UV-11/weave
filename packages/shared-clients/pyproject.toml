@@ -4,11 +4,11 @@ version = "0.1.0"
 description = "Weave: generated gRPC client stubs + a thin wrapper for calling core from Python services"
 requires-python = ">=3.12"
 dependencies = [
-  "grpcio>=1.83.0",
+  "grpcio==1.83.0",
   "protobuf>=6.33.1",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "grpcio-tools>=1.83.0",
+  "grpcio-tools==1.83.0",
 ]

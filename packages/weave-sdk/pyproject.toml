@@ -4,13 +4,13 @@ version = "0.1.0"
 description = "Weave SDK: register your business's services as tools for your Weave-hosted bot — no MCP server to build or run yourself"
 requires-python = ">=3.12"
 dependencies = [
-  "grpcio>=1.83.0",
+  "grpcio==1.83.0",
   "protobuf>=6.33.1",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "grpcio-tools>=1.83.0",
+  "grpcio-tools==1.83.0",
   "pytest>=8.3.0",
   "pytest-asyncio>=0.24.0",
 ]
