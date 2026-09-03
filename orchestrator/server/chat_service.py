@@ -36,6 +36,7 @@ from server.auth import InvalidTokenError, bearer_token_from_metadata, verify_ac
 from server.graph import run_turn  # noqa: E402
 from server.guardrails import screen  # noqa: E402
 from server.router import classify_route  # noqa: E402
+from server.session_memory import persist_turn, resolve_session  # noqa: E402
 from server.web_search import WEB_SEARCH_TOOL  # noqa: E402
 from tools.assembly import ToolAssemblyError, assemble_tools  # noqa: E402
 
@@ -91,6 +92,16 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, str(exc))
             return
 
+        session_id, prior_messages = await resolve_session(
+            self._core,
+            tenant_id=claims.tenant_id,
+            user_id=claims.user_id,
+            profile_id=assembly.profile_id,
+            channel=request.channel,
+            token=token,
+            session_id=request.session_id,
+        )
+
         analytics_tools = assembly.analytics_tools
         route = await classify_route(
             request.message,
@@ -107,17 +118,19 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
 
         messages = [
             {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
+            *prior_messages,
             {"role": "user", "content": request.message},
         ]
 
         logger.info(
-            "tenant=%s channel=%s profile=%s visibility=%s route=%s tools_available=%d message=%r",
+            "tenant=%s channel=%s profile=%s visibility=%s route=%s tools_available=%d prior_messages=%d message=%r",
             claims.tenant_id,
             request.channel,
             assembly.profile_name,
             assembly.visibility,
             route,
             len(chosen_tools),
+            len(prior_messages),
             request.message,
         )
 
@@ -130,33 +143,53 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
             logger.info("tool_used=%s connector_used=%s", state["tool_used"], state["connector_used"])
 
         if assembly.guardrails_active:
-            async for resp in self._guarded_response(state, assembly.guardrails, request.session_id):
+            async for resp in self._guarded_response(
+                state, assembly.guardrails, session_id, claims.tenant_id, token, request.message
+            ):
                 yield resp
             return
 
+        full_text_parts: list[str] = []
         async for token_text in chat_stream(state["messages"]):
+            full_text_parts.append(token_text)
             yield chat_pb2.ChatStreamResponse(
                 token=token_text,
                 done=False,
-                session_id=request.session_id,
+                session_id=session_id,
                 tool_used=state["tool_used"],
                 connector_used=state["connector_used"],
             )
 
-        yield chat_pb2.ChatStreamResponse(
-            token="",
-            done=True,
-            session_id=request.session_id,
+        await persist_turn(
+            self._core,
+            tenant_id=claims.tenant_id,
+            session_id=session_id,
+            token=token,
+            user_message=request.message,
+            assistant_message="".join(full_text_parts),
             tool_used=state["tool_used"],
             connector_used=state["connector_used"],
         )
 
-    async def _guarded_response(self, state, guardrails: list[str], session_id: str):
+        yield chat_pb2.ChatStreamResponse(
+            token="",
+            done=True,
+            session_id=session_id,
+            tool_used=state["tool_used"],
+            connector_used=state["connector_used"],
+        )
+
+    async def _guarded_response(self, state, guardrails: list[str], session_id: str, tenant_id: str, token: str, user_message: str):
         result = await chat(state["messages"])
         verdict = await screen(result.content, guardrails)
 
+        # Persist what was actually SENT, not the raw generation: if a
+        # later turn replayed the pre-redaction content back into
+        # context (see server/session_memory.py's _REPLAYABLE_ROLES),
+        # it would quietly defeat the guardrail this turn just enforced.
         if not verdict.ok:
             logger.info("guardrail violation on final answer: %s", verdict.reason)
+            sent_text = GUARDRAIL_REFUSAL
             yield chat_pb2.ChatStreamResponse(
                 token=GUARDRAIL_REFUSAL,
                 done=False,
@@ -165,6 +198,7 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
                 connector_used=state["connector_used"],
             )
         else:
+            sent_text = result.content
             for chunk in _chunk_text(result.content):
                 yield chat_pb2.ChatStreamResponse(
                     token=chunk,
@@ -173,6 +207,17 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
                     tool_used=state["tool_used"],
                     connector_used=state["connector_used"],
                 )
+
+        await persist_turn(
+            self._core,
+            tenant_id=tenant_id,
+            session_id=session_id,
+            token=token,
+            user_message=user_message,
+            assistant_message=sent_text,
+            tool_used=state["tool_used"],
+            connector_used=state["connector_used"],
+        )
 
         yield chat_pb2.ChatStreamResponse(
             token="",

@@ -7,9 +7,11 @@ option go_package = "weave/core/gen/orchestrator/v1;orchestratorv1";
 message ChatStreamRequest {
   string channel = 1;
   string message = 2;
-  // Continues an existing conversation; empty starts a new one. Session
-  // persistence isn't built yet (Phase 4+) — for now this is carried but
-  // unused beyond echoing back in ChatStreamResponse.
+  // Continues an existing conversation; empty starts a new one. Backed
+  // by core's ChatService (docs/architecture/ARCHITECTURE.md §5) — an
+  // empty value creates a fresh session server-side, whose id comes back
+  // in ChatStreamResponse.session_id for the caller to send on the next
+  // turn.
   string session_id = 3;
 }
 

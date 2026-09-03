@@ -42,6 +42,7 @@ class AssembledTool:
 @dataclass
 class AssemblyResult:
     tools: list[AssembledTool]
+    profile_id: str
     profile_name: str
     visibility: str
     guardrails: list[str]
@@ -125,6 +126,7 @@ async def assemble_tools(
             )
     return AssemblyResult(
         tools=assembled,
+        profile_id=profile._id,
         profile_name=profile.name,
         visibility=profile.visibility or "internal",
         guardrails=list(profile.guardrails),

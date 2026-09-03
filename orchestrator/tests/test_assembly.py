@@ -22,6 +22,7 @@ def make_core(
         GetActiveBotProfile=AsyncMock(
             return_value=SimpleNamespace(
                 bot_profile=SimpleNamespace(
+                    _id="profile_1",
                     name="external",
                     roles_allowed=profile_roles_allowed,
                     connector_ids=profile_connector_ids,
