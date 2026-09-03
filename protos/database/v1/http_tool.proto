@@ -36,4 +36,18 @@ message HttpTool {
   // Same vault as MCP connector credentials (docs/architecture/SECURITY.md §3).
   string credential_ref_id = 9;
   string created_at = 10;
+  // "internal" | "external". Defaults to "internal" (secure by default —
+  // a business must explicitly opt a tool into external/customer-facing
+  // use). Carried into the MCP tool descriptor's _meta by mcp-gateway
+  // (mcp-gateway/gateway/tenant_server.py) so orchestrator's tool
+  // assembly (orchestrator/tools/assembly.py) can filter: an external
+  // bot profile only ever sees "external" tools, an internal profile
+  // sees all of a tenant's tools regardless of this field.
+  string visibility = 11;
+  // "general" | "analytics". Defaults to "general". Lets the multi-agent
+  // supervisor's router (orchestrator/server/router.py) route a turn to
+  // only this tenant's analytics-flavored tools when the query is
+  // analytical, instead of offering the full tool set. Also carried via
+  // MCP _meta, same mechanism as visibility.
+  string category = 12;
 }

@@ -24,6 +24,13 @@ class McpTool:
     name: str
     description: str
     input_schema: dict[str, Any]
+    # Weave-specific extension metadata carried in MCP's standard `_meta`
+    # field (mcp-gateway/gateway/tenant_server.py). A real third-party MCP
+    # server won't set these, so absence defaults to the least
+    # restrictive values: every profile can see the tool, and it's not
+    # singled out as analytics-flavored.
+    visibility: str = "external"
+    category: str = "general"
 
 
 class MissingToolDescriptionError(ValueError):
@@ -46,11 +53,14 @@ async def list_tools(endpoint: McpTarget) -> list[McpTool]:
         if not (t.description or "").strip():
             missing.append(t.name)
             continue
+        meta = t.meta or {}
         tools.append(
             McpTool(
                 name=t.name,
                 description=t.description,
                 input_schema=t.input_schema or {},
+                visibility=meta.get("visibility") or "external",
+                category=meta.get("category") or "general",
             )
         )
     if missing:

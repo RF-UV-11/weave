@@ -56,7 +56,21 @@ def build_tenant_server(core: CoreClient, tenant_id: str) -> Server:
         tools = await _fetch_tools(core, tenant_id)
         return types.ListToolsResult(
             tools=[
-                types.Tool(name=t.name, description=t.description, inputSchema=_parse_schema(t.params_schema))
+                types.Tool(
+                    name=t.name,
+                    description=t.description,
+                    inputSchema=_parse_schema(t.params_schema),
+                    # Weave-specific extension metadata (docs/architecture/
+                    # ARCHITECTURE.md §3): a real, non-Weave MCP server
+                    # would never set these, so orchestrator's tool
+                    # assembly treats their absence as "external"/"general"
+                    # (the least restrictive default) rather than failing
+                    # closed on tools that predate this convention.
+                    _meta={
+                        "visibility": t.visibility or "internal",
+                        "category": t.category or "general",
+                    },
+                )
                 for t in tools
             ]
         )

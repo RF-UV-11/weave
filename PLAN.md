@@ -159,7 +159,7 @@ How to use this file: work top to bottom, don't start a phase until the previous
 **Goal**: route each turn to the right specialist agent (tools vs. web) instead of always offering every tenant tool at once, and let a business declare an external-facing bot with content-disclosure rules that are actually enforced, not just prompted-and-hoped-for.
 
 - [x] `BotProfile.visibility` ("internal" | "external") + `BotProfile.guardrails` (free-text disclosure rules), validated in `CreateBotProfile`
-- [x] `orchestrator/server/router.py` — LLM classification into `tools` (the tenant's own registered connectors/HttpTools) or `web` (public search); `analytics` is an explicit, documented alias for `tools`, not a fabricated third capability — see `docs/architecture/ARCHITECTURE.md` §3
+- [x] `orchestrator/server/router.py` — LLM classification into `tools` (the tenant's own registered connectors/HttpTools) or `web` (public search); `analytics` was an explicit, documented alias for `tools` at the time this phase shipped, not a fabricated third capability — superseded by a real analytics route in Phase 3.7 once tools could be tagged by category, see below
 - [x] `orchestrator/server/web_search.py` — built-in web-search tool (DuckDuckGo HTML endpoint, no API key), offered only on the `web` route
 - [x] `orchestrator/server/guardrails.py` — LLM-as-judge screening, two checkpoints: a tool's raw result before it enters context, and the final answer before it's sent
 - [x] `chat_service.py`: guardrail-active turns buffer the full answer (real streaming and hard guardrails are mutually exclusive — see `docs/architecture/SECURITY.md` §7) and send it chunked after passing the screen; non-guardrail turns keep genuine token streaming, unchanged
@@ -169,9 +169,44 @@ How to use this file: work top to bottom, don't start a phase until the previous
 **Notes**:
 - **A real, honest limitation found in live verification**: guardrail screening operates on the whole tool-result text, not per-field. Because the fake verification API returns status/eta/supplier as one JSON blob, *any* call to that tool gets redacted once a guardrail forbids supplier disclosure — even a query that only asked about shipping status, nothing to do with the supplier. Safe (fails toward less disclosure), but blunt. Field-level redaction is a real follow-up (either LLM-directed partial redaction, or marking specific schema fields sensitive so `mcp-gateway` strips them before returning), not built here — documented in `docs/architecture/SECURITY.md` §7 rather than silently left as a surprise.
 - **Streaming/guardrail tension was thought through before writing code, not discovered after**: a hard guardrail that actually prevents disclosure cannot coexist with real-time token streaming, since a token already sent can't be recalled. Buffering the full answer for guardrail-active turns only (not every turn) is the deliberate resolution — see `SECURITY.md` §7's explicit note not to "fix" this by trying to stream guardrail-checked content incrementally.
-- **"Analytics" is a routing category, not a capability** — there's no separate analytics data source (metrics store, BI connector type) in this system yet. Routing still classifies it distinctly so the alias is visible and can be swapped for a real backend later by changing one mapping, rather than pretending a capability exists that doesn't.
+- **"Analytics" was a routing category, not a capability, as of this phase** — there was no separate analytics data source (metrics store, BI connector type) in this system yet. Routing classified it distinctly specifically so the alias could be swapped for a real backend later by changing one mapping — see Phase 3.7, where that swap happened.
 - `orchestrator/server/web_search.py` uses regex extraction against DuckDuckGo's HTML-lite endpoint rather than a full HTML parser (avoids adding `beautifulsoup4` for what's currently one page's worth of scraping) — degrades to "no results" if DuckDuckGo's markup changes, not a crash, but is fragile by nature; swap for a real search API if reliability matters more than avoiding a paid dependency.
 - 22 new tests across `test_guardrails.py`, `test_router.py`, `test_web_search.py`, plus new cases in `test_graph.py` and `test_assembly.py` — 49 orchestrator tests total, all passing.
+
+---
+
+## Phase 3.7 — Web-search toggle, per-tool visibility & real analytics routing
+
+**Goal**: three prerequisites for the "actual simulation" demo (Phase 3.8): let a business opt into web search per bot profile instead of it always being available, let a business expose some tools to customers while keeping others staff-only from the *same* tool registry (not two separate connectors), and give the analytics route something real to offer instead of being a documented alias for `tools`.
+
+- [x] `BotProfile.web_search_enabled` (bool, defaults `false` — opt-in, since it sends the user's raw message to a public search engine, `docs/architecture/SECURITY.md` new bullet under §7)
+- [x] `HttpTool.visibility` (`"internal"|"external"`, defaults `"internal"`) and `HttpTool.category` (`"general"|"analytics"`, defaults `"general"`) — both validated in `RegisterHttpTool`, both carried from `core` to `orchestrator` via MCP's standard `_meta` field on each `Tool` descriptor (`mcp-gateway/gateway/tenant_server.py`), since MCP's `Tool` schema has no first-class concept of either
+- [x] `orchestrator/mcp_client/client.py`'s `McpTool` gains `visibility`/`category`, defaulting to the least-restrictive values (`"external"`/`"general"`) when a connector doesn't set `_meta` — a real third-party MCP server predates this convention and shouldn't be silently hidden or miscategorized
+- [x] `orchestrator/tools/assembly.py` filters assembled tools by profile visibility (external profile → external tools only; internal → everything) and exposes `AssemblyResult.analytics_tools`
+- [x] `orchestrator/server/router.py` rewritten for real 3-way classification (`tools`/`analytics`/`web`) — each route is only ever offered to the classifier if something backs it this turn; the LLM call is skipped entirely when `tools` is the only possible answer, same "skip if nothing to decide" discipline as the original 2-way router
+- [x] `weave-sdk`: `add_tool(..., visibility=, category=)` and a new `create_bot_profile(...)` (previously bot profiles could only be created via a direct `core` RPC call, e.g. `grpcurl` — the SDK had no first-class way to declare one at all)
+
+**Definition of done**: ✅ **met** — full coverage added: `core` (`bot_profile_test.go`, `http_tool_test.go` — visibility/category/web_search_enabled round-trip through Mongo), `mcp-gateway` (`test_tenant_server.py` — `_meta` carries both fields over real MCP protocol, in-process), `orchestrator` (`test_assembly.py` — external/internal visibility filtering, `analytics_tools` property; `test_router.py` — 3-way classification, web route never returned when disabled even if the model says so), `weave-sdk` (`test_client.py` — new params/RPC fields, `create_bot_profile` resolving the tenant's managed connector by default). All four services' suites green after this change.
+
+**Notes**:
+- **Defaults chosen for "secure/opt-in by default", not convenience**: `HttpTool.visibility` defaults to `"internal"` (a business must explicitly mark a tool safe for customers), `web_search_enabled` defaults to `false` (a business must explicitly accept that a customer's message can leave Weave's trust boundary to a public search engine). `HttpTool.category` defaults to `"general"` since there's no safety dimension there, just routing.
+- **Why `_meta` and not a new proto field on MCP's `Tool` message**: MCP's wire schema isn't Weave's to extend — `types.Tool` doesn't have `visibility`/`category` fields, and never should, since a real MCP server has no reason to know about Weave-specific bot-profile semantics. `_meta` is MCP's own sanctioned extension point for exactly this. The alternative (a side-channel RPC from orchestrator to core to fetch visibility/category by tool name) would have reintroduced a second source of truth that could drift from what `tools/list` actually returned that turn.
+- **Router now skips its own LLM call more often than before**, not just when there are zero registered tools: if a profile has no analytics-tagged tools and web search is off, "tools" is the only possible answer regardless of what the message says, so the classification call is skipped — a small cost optimization that falls directly out of making the other two routes real rather than always-on.
+
+---
+
+## Phase 3.8 — Deeper analytics, memory, web-search UX, demo vendor, full UI
+
+**Goal**: turn the last several phases' backend capabilities into something demonstrable end-to-end — "actual simulation of weave" per the founder's own framing, not isolated backend features. Scope decided via explicit user choices: analytics = the demo vendor's own business data (no external BI integration); memory = session persistence (short-term, every turn) *and* long-term semantic recall (Qdrant-backed embeddings, cross-session).
+
+- [ ] Demo vendor "Acme Electronics": a real FastAPI service simulating a business's public API — some endpoints external (order status, warranty lookup, product info), some internal-only (sales analytics, inventory, customer PII) — registered via the `weave` SDK's new `visibility`/`category` params (Phase 3.7) as the live proof those params do what they claim
+- [ ] Demo setup script creating both an `external` bot profile (customer-facing, guardrails active, web search on) and an `internal` bot profile (staff-facing, sees everything) against the same tenant/tool registry, showing the visibility split in one place
+- [ ] Core `ChatSession`/`ChatMessage`: proto, Mongo collections, RPCs — session memory persisted through `core` only, never held by `orchestrator` directly (`docs/architecture/ARCHITECTURE.md` §5)
+- [ ] `orchestrator` loads prior turns for a session before generating and persists both sides of the turn after, giving real multi-turn context instead of every `ChatStream` call being independently stateless
+- [ ] Long-term semantic memory: `core` gets a Qdrant client (one collection per tenant, `docs/architecture/SECURITY.md` §2) and `Upsert`/`Search` memory RPCs; `orchestrator` computes the embedding (via Ollama) and calls `core` — `core` remains the only tier holding real infra credentials, `orchestrator` never talks to Qdrant directly
+- [ ] `web/`: Next.js 14 + TypeScript + Tailwind + shadcn/ui (stack committed in `OVERVIEW.md` §5) — a chat UI and an admin/onboarding UI, dark theme, talking to `orchestrator`/`core` over grpc-web through the not-yet-built Envoy proxy (`ARCHITECTURE.md` §4)
+
+Not yet started as of this entry — tracked here so the phase's scope is written down before implementation, not reconstructed from commits after the fact.
 
 ---
 

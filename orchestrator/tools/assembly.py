@@ -45,6 +45,7 @@ class AssemblyResult:
     profile_name: str
     visibility: str
     guardrails: list[str]
+    web_search_enabled: bool
 
     @property
     def guardrails_active(self) -> bool:
@@ -53,6 +54,10 @@ class AssemblyResult:
         token streaming — see BotProfile.visibility's doc comment for why
         this isn't applied to every profile."""
         return self.visibility == "external" and bool(self.guardrails)
+
+    @property
+    def analytics_tools(self) -> list[AssembledTool]:
+        return [t for t in self.tools if t.tool.category == "analytics"]
 
 
 async def assemble_tools(
@@ -102,6 +107,14 @@ async def assemble_tools(
             # ARCHITECTURE.md §3's failure-handling rule).
             continue
         for tool in mcp_tools:
+            # Per-tool visibility (HttpTool.visibility, carried in MCP's
+            # _meta — see mcp_client/client.py). An external bot profile
+            # only ever sees tools their business explicitly marked
+            # "external"; an internal profile sees everything, staff
+            # being trusted with the full tool surface by construction
+            # (docs/architecture/ARCHITECTURE.md §3).
+            if profile.visibility == "external" and tool.visibility != "external":
+                continue
             assembled.append(
                 AssembledTool(
                     connector_id=connector._id,
@@ -115,4 +128,5 @@ async def assemble_tools(
         profile_name=profile.name,
         visibility=profile.visibility or "internal",
         guardrails=list(profile.guardrails),
+        web_search_enabled=profile.web_search_enabled,
     )

@@ -8,7 +8,15 @@ from mcp_client.client import McpTool
 from tools.assembly import ToolAssemblyError, assemble_tools
 
 
-def make_core(*, profile_roles_allowed, profile_connector_ids, connectors, visibility="internal", guardrails=None):
+def make_core(
+    *,
+    profile_roles_allowed,
+    profile_connector_ids,
+    connectors,
+    visibility="internal",
+    guardrails=None,
+    web_search_enabled=False,
+):
     core = SimpleNamespace()
     core.bot_profile = SimpleNamespace(
         GetActiveBotProfile=AsyncMock(
@@ -19,6 +27,7 @@ def make_core(*, profile_roles_allowed, profile_connector_ids, connectors, visib
                     connector_ids=profile_connector_ids,
                     visibility=visibility,
                     guardrails=guardrails or [],
+                    web_search_enabled=web_search_enabled,
                 )
             )
         )
@@ -116,3 +125,79 @@ async def test_guardrails_inactive_for_external_profile_with_no_rules():
     core = make_core(profile_roles_allowed=[4], profile_connector_ids=[], connectors=[], visibility="external", guardrails=[])
     result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
     assert result.guardrails_active is False
+
+
+async def test_web_search_enabled_propagates_from_profile(monkeypatch):
+    core = make_core(
+        profile_roles_allowed=[4], profile_connector_ids=[], connectors=[], web_search_enabled=True
+    )
+    result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
+    assert result.web_search_enabled is True
+
+
+async def test_web_search_disabled_by_default(monkeypatch):
+    core = make_core(profile_roles_allowed=[4], profile_connector_ids=[], connectors=[])
+    result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
+    assert result.web_search_enabled is False
+
+
+async def test_external_profile_only_sees_external_tools(monkeypatch):
+    core = make_core(
+        profile_roles_allowed=[4],
+        profile_connector_ids=["conn_1"],
+        connectors=[make_connector("conn_1", "acme-api")],
+        visibility="external",
+    )
+
+    async def fake_list_tools(endpoint):
+        return [
+            McpTool(name="track_order", description="Track an order", input_schema={}, visibility="external"),
+            McpTool(name="get_customer_pii", description="Internal only", input_schema={}, visibility="internal"),
+        ]
+
+    monkeypatch.setattr(assembly_module, "list_tools", fake_list_tools)
+
+    result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
+    names = {t.tool.name for t in result.tools}
+    assert names == {"track_order"}
+
+
+async def test_internal_profile_sees_every_tool_regardless_of_visibility(monkeypatch):
+    core = make_core(
+        profile_roles_allowed=[4],
+        profile_connector_ids=["conn_1"],
+        connectors=[make_connector("conn_1", "acme-api")],
+        visibility="internal",
+    )
+
+    async def fake_list_tools(endpoint):
+        return [
+            McpTool(name="track_order", description="Track an order", input_schema={}, visibility="external"),
+            McpTool(name="get_customer_pii", description="Internal only", input_schema={}, visibility="internal"),
+        ]
+
+    monkeypatch.setattr(assembly_module, "list_tools", fake_list_tools)
+
+    result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
+    names = {t.tool.name for t in result.tools}
+    assert names == {"track_order", "get_customer_pii"}
+
+
+async def test_analytics_tools_property_filters_by_category(monkeypatch):
+    core = make_core(
+        profile_roles_allowed=[4],
+        profile_connector_ids=["conn_1"],
+        connectors=[make_connector("conn_1", "acme-api")],
+        visibility="internal",
+    )
+
+    async def fake_list_tools(endpoint):
+        return [
+            McpTool(name="track_order", description="Track an order", input_schema={}, category="general"),
+            McpTool(name="sales_report", description="Revenue over time", input_schema={}, category="analytics"),
+        ]
+
+    monkeypatch.setattr(assembly_module, "list_tools", fake_list_tools)
+
+    result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
+    assert [t.tool.name for t in result.analytics_tools] == ["sales_report"]

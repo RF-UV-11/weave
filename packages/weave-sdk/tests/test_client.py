@@ -4,22 +4,37 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from weave.client import RegisteredTool, SyncWeaveClient, WeaveClient, connect, connect_async
+from weave.client import BotProfileHandle, RegisteredTool, SyncWeaveClient, WeaveClient, connect, connect_async
 
 
-def make_core_with_http_tool_stub(register_response=None, list_response=None, deregister_response=None):
+def make_core_with_http_tool_stub(
+    register_response=None, list_response=None, deregister_response=None,
+    bot_profile_response=None, connectors_response=None,
+):
     core = SimpleNamespace()
     core.http_tool = SimpleNamespace(
         RegisterHttpTool=AsyncMock(return_value=register_response),
         ListHttpTools=AsyncMock(return_value=list_response),
         DeregisterHttpTool=AsyncMock(return_value=deregister_response),
     )
+    core.bot_profile = SimpleNamespace(CreateBotProfile=AsyncMock(return_value=bot_profile_response))
+    core.connector = SimpleNamespace(
+        ListConnectors=AsyncMock(
+            return_value=connectors_response or SimpleNamespace(connectors=[])
+        )
+    )
     core.close = AsyncMock()
     return core
 
 
-def fake_registered_tool(id_="htool_1", name="get_status", description="Gets status", endpoint="https://x", method="GET"):
-    return SimpleNamespace(_id=id_, name=name, description=description, http_endpoint=endpoint, http_method=method)
+def fake_registered_tool(
+    id_="htool_1", name="get_status", description="Gets status", endpoint="https://x", method="GET",
+    visibility="internal", category="general",
+):
+    return SimpleNamespace(
+        _id=id_, name=name, description=description, http_endpoint=endpoint, http_method=method,
+        visibility=visibility, category=category,
+    )
 
 
 async def test_add_tool_sends_json_encoded_schema_and_returns_registered_tool():
@@ -80,6 +95,76 @@ async def test_list_tools_returns_registered_tools():
 
     assert [t.name for t in tools] == ["get_status", "other"]
     assert core.http_tool.ListHttpTools.call_args.args[0].tenant_id == "tnt_1"
+
+
+async def test_add_tool_passes_visibility_and_category():
+    core = make_core_with_http_tool_stub(
+        register_response=SimpleNamespace(http_tool=fake_registered_tool(visibility="external", category="analytics"))
+    )
+    client = WeaveClient(core, "tnt_1", "tok_abc")
+
+    result = await client.add_tool(
+        name="sales_report", description="Revenue report", endpoint="https://x",
+        visibility="external", category="analytics",
+    )
+
+    req = core.http_tool.RegisterHttpTool.call_args.args[0]
+    assert req.visibility == "external"
+    assert req.category == "analytics"
+    assert result.visibility == "external"
+    assert result.category == "analytics"
+
+
+async def test_add_tool_defaults_visibility_internal_and_category_general():
+    core = make_core_with_http_tool_stub(register_response=SimpleNamespace(http_tool=fake_registered_tool()))
+    client = WeaveClient(core, "tnt_1", "tok_abc")
+
+    await client.add_tool(name="x", description="does x", endpoint="https://x")
+
+    req = core.http_tool.RegisterHttpTool.call_args.args[0]
+    assert req.visibility == "internal"
+    assert req.category == "general"
+
+
+async def test_create_bot_profile_resolves_managed_connector_by_default():
+    core = make_core_with_http_tool_stub(
+        bot_profile_response=SimpleNamespace(
+            bot_profile=SimpleNamespace(_id="profile_1", name="external", visibility="external")
+        ),
+        connectors_response=SimpleNamespace(
+            connectors=[SimpleNamespace(_id="conn_1", name="weave_managed")]
+        ),
+    )
+    client = WeaveClient(core, "tnt_1", "tok_abc")
+
+    result = await client.create_bot_profile(
+        name="external", channels=["web-widget"], roles_allowed=["customer"], visibility="external",
+    )
+
+    assert isinstance(result, BotProfileHandle)
+    assert result.id == "profile_1"
+    req = core.bot_profile.CreateBotProfile.call_args.args[0]
+    assert req.connector_ids == ["conn_1"]
+    assert req.roles_allowed == [4]
+    assert req.visibility == "external"
+
+
+async def test_create_bot_profile_passes_web_search_enabled_and_guardrails():
+    core = make_core_with_http_tool_stub(
+        bot_profile_response=SimpleNamespace(
+            bot_profile=SimpleNamespace(_id="profile_1", name="external", visibility="external")
+        ),
+    )
+    client = WeaveClient(core, "tnt_1", "tok_abc")
+
+    await client.create_bot_profile(
+        name="external", channels=["web-widget"], roles_allowed=["customer"],
+        web_search_enabled=True, guardrails=["Never disclose supplier names."],
+    )
+
+    req = core.bot_profile.CreateBotProfile.call_args.args[0]
+    assert req.web_search_enabled is True
+    assert list(req.guardrails) == ["Never disclose supplier names."]
 
 
 async def test_remove_tool_calls_deregister_with_metadata():

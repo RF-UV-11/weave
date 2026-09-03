@@ -17,7 +17,7 @@ from typing import Any
 
 from weave_shared_clients import CoreClient, bearer_metadata
 
-from core.data_access.v1 import auth_pb2, http_tool_pb2
+from core.data_access.v1 import auth_pb2, bot_profile_pb2, connector_pb2, http_tool_pb2
 
 _DEFAULT_SCHEMA = {"type": "object", "properties": {}}
 
@@ -29,6 +29,15 @@ class RegisteredTool:
     description: str
     endpoint: str
     method: str
+    visibility: str
+    category: str
+
+
+@dataclass
+class BotProfileHandle:
+    id: str
+    name: str
+    visibility: str
 
 
 class WeaveClient:
@@ -49,6 +58,8 @@ class WeaveClient:
         method: str = "GET",
         params_schema: dict[str, Any] | None = None,
         credential_secret: str | None = None,
+        visibility: str = "internal",
+        category: str = "general",
     ) -> RegisteredTool:
         """Registers a public HTTP endpoint as a tool your bot can call.
 
@@ -61,6 +72,13 @@ class WeaveClient:
         what the model uses to decide whether and how to call this tool,
         and it travels with the tool's result too (PLAN.md's tool-
         description requirement) — write it like documentation, not a label.
+
+        visibility: "internal" (default, staff-only bot profiles) or
+        "external" (also usable by customer-facing bot profiles) — see
+        docs/architecture/ARCHITECTURE.md §3. category: "general"
+        (default) or "analytics" — tags this tool for the analytics
+        specialist route (docs/architecture/ARCHITECTURE.md §3's
+        multi-agent supervisor).
         """
         resp = await self._core.http_tool.RegisterHttpTool(
             http_tool_pb2.RegisterHttpToolRequest(
@@ -71,16 +89,24 @@ class WeaveClient:
                 http_method=method,
                 params_schema=json.dumps(params_schema or _DEFAULT_SCHEMA),
                 credential_secret=credential_secret or "",
+                visibility=visibility,
+                category=category,
             ),
             metadata=bearer_metadata(self._token),
         )
         t = resp.http_tool
-        return RegisteredTool(id=t._id, name=t.name, description=t.description, endpoint=t.http_endpoint, method=t.http_method)
+        return RegisteredTool(
+            id=t._id, name=t.name, description=t.description, endpoint=t.http_endpoint, method=t.http_method,
+            visibility=t.visibility, category=t.category,
+        )
 
     async def list_tools(self) -> list[RegisteredTool]:
         resp = await self._core.http_tool.ListHttpTools(http_tool_pb2.ListHttpToolsRequest(tenant_id=self._tenant_id))
         return [
-            RegisteredTool(id=t._id, name=t.name, description=t.description, endpoint=t.http_endpoint, method=t.http_method)
+            RegisteredTool(
+                id=t._id, name=t.name, description=t.description, endpoint=t.http_endpoint, method=t.http_method,
+                visibility=t.visibility, category=t.category,
+            )
             for t in resp.http_tools
         ]
 
@@ -89,6 +115,50 @@ class WeaveClient:
             http_tool_pb2.DeregisterHttpToolRequest(tenant_id=self._tenant_id, http_tool_id=tool_id),
             metadata=bearer_metadata(self._token),
         )
+
+    async def create_bot_profile(
+        self,
+        *,
+        name: str,
+        channels: list[str],
+        roles_allowed: list[str],
+        persona: str = "",
+        connector_ids: list[str] | None = None,
+        visibility: str = "internal",
+        guardrails: list[str] | None = None,
+        web_search_enabled: bool = False,
+    ) -> BotProfileHandle:
+        """Creates a bot profile — the unit a business points a channel at.
+        roles_allowed is a list of role names ("owner"|"admin"|"staff"|
+        "customer"). connector_ids defaults to this tenant's single
+        weave_managed connector (every add_tool()'d tool lives there) if
+        omitted, since that's the common case for a business using only
+        the HTTP-tool SDK path rather than a hand-rolled MCP server.
+        """
+        resolved_connector_ids = connector_ids
+        if resolved_connector_ids is None:
+            conn_resp = await self._core.connector.ListConnectors(
+                connector_pb2.ListConnectorsRequest(tenant_id=self._tenant_id)
+            )
+            resolved_connector_ids = [c._id for c in conn_resp.connectors if c.name == "weave_managed"]
+
+        role_enum = {"owner": 1, "admin": 2, "staff": 3, "customer": 4}
+        resp = await self._core.bot_profile.CreateBotProfile(
+            bot_profile_pb2.CreateBotProfileRequest(
+                tenant_id=self._tenant_id,
+                name=name,
+                persona=persona,
+                connector_ids=resolved_connector_ids,
+                channels=channels,
+                roles_allowed=[role_enum[r] for r in roles_allowed],
+                visibility=visibility,
+                guardrails=guardrails or [],
+                web_search_enabled=web_search_enabled,
+            ),
+            metadata=bearer_metadata(self._token),
+        )
+        p = resp.bot_profile
+        return BotProfileHandle(id=p._id, name=p.name, visibility=p.visibility)
 
     async def close(self) -> None:
         await self._core.close()
@@ -139,6 +209,9 @@ class SyncWeaveClient:
 
     def remove_tool(self, tool_id: str) -> None:
         self._run(self._async_client.remove_tool(tool_id))
+
+    def create_bot_profile(self, **kwargs: Any) -> BotProfileHandle:
+        return self._run(self._async_client.create_bot_profile(**kwargs))
 
     def close(self) -> None:
         self._run(self._async_client.close())

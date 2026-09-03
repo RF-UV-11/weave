@@ -9,18 +9,19 @@ import (
 	databasev1 "weave/core/gen/database/v1"
 )
 
-func CreateBotProfile(ctx context.Context, tenantID, name, persona string, connectorIDs, channels []string, rolesAllowed []databasev1.Role, visibility string, guardrails []string) (*databasev1.BotProfile, error) {
+func CreateBotProfile(ctx context.Context, tenantID, name, persona string, connectorIDs, channels []string, rolesAllowed []databasev1.Role, visibility string, guardrails []string, webSearchEnabled bool) (*databasev1.BotProfile, error) {
 	p := &databasev1.BotProfile{
-		XId:          "profile_" + newULID(),
-		TenantId:     tenantID,
-		Name:         name,
-		Persona:      persona,
-		ConnectorIds: connectorIDs,
-		Channels:     channels,
-		RolesAllowed: rolesAllowed,
-		Visibility:   visibility,
-		Guardrails:   guardrails,
-		CreatedAt:    time.Now().UTC().Format(time.RFC3339),
+		XId:              "profile_" + newULID(),
+		TenantId:         tenantID,
+		Name:             name,
+		Persona:          persona,
+		ConnectorIds:     connectorIDs,
+		Channels:         channels,
+		RolesAllowed:     rolesAllowed,
+		Visibility:       visibility,
+		Guardrails:       guardrails,
+		WebSearchEnabled: webSearchEnabled,
+		CreatedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
 	if _, err := Db.Db.Collection(ColNames.BotProfiles).InsertOne(ctx, p); err != nil {
 		return nil, err

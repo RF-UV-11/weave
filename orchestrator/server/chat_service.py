@@ -91,8 +91,19 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, str(exc))
             return
 
-        route = await classify_route(request.message, has_registered_tools=bool(assembly.tools))
-        chosen_tools = [WEB_SEARCH_TOOL] if route == "web" else assembly.tools
+        analytics_tools = assembly.analytics_tools
+        route = await classify_route(
+            request.message,
+            has_registered_tools=bool(assembly.tools),
+            has_analytics_tools=bool(analytics_tools),
+            web_search_enabled=assembly.web_search_enabled,
+        )
+        if route == "web":
+            chosen_tools = [WEB_SEARCH_TOOL]
+        elif route == "analytics":
+            chosen_tools = analytics_tools
+        else:
+            chosen_tools = assembly.tools
 
         messages = [
             {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},

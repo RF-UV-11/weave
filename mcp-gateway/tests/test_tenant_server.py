@@ -16,10 +16,11 @@ from gateway.http_caller import HttpToolCallError
 
 
 def make_tool(name, description="does something", http_endpoint="https://x", http_method="GET",
-              params_schema="", credential_ref_id="", _id="htool_1"):
+              params_schema="", credential_ref_id="", _id="htool_1", visibility="external", category="general"):
     return SimpleNamespace(
         _id=_id, name=name, description=description, http_endpoint=http_endpoint,
         http_method=http_method, params_schema=params_schema, credential_ref_id=credential_ref_id,
+        visibility=visibility, category=category,
     )
 
 
@@ -41,6 +42,15 @@ async def test_list_tools_returns_registered_tools():
         names = {t.name for t in result.tools}
         assert names == {"get_status"}
         assert result.tools[0].description == "Gets order status"
+
+
+async def test_list_tools_carries_visibility_and_category_in_meta():
+    core = make_core([make_tool("sales_report", visibility="internal", category="analytics")])
+    server = build_tenant_server(core, "tnt_1")
+
+    async with Client(server) as client:
+        result = await client.list_tools()
+        assert result.tools[0].meta == {"visibility": "internal", "category": "analytics"}
 
 
 async def test_list_tools_empty_for_tenant_with_no_tools():

@@ -40,7 +40,7 @@ func (s *Server) CreateBotProfile(ctx context.Context, req *dataaccessv1.CreateB
 	}
 
 	p, err := mongodb.CreateBotProfile(ctx, req.GetTenantId(), req.GetName(), req.GetPersona(),
-		req.GetConnectorIds(), req.GetChannels(), req.GetRolesAllowed(), visibility, req.GetGuardrails())
+		req.GetConnectorIds(), req.GetChannels(), req.GetRolesAllowed(), visibility, req.GetGuardrails(), req.GetWebSearchEnabled())
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

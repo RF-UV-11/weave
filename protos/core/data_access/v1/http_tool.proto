@@ -18,6 +18,10 @@ message RegisterHttpToolRequest {
   // Encrypted at rest immediately, same as RegisterConnector's
   // credential_secret — never stored or logged in plaintext.
   string credential_secret = 7;
+  // "internal" | "external", defaults to "internal" if empty.
+  string visibility = 8;
+  // "general" | "analytics", defaults to "general" if empty.
+  string category = 9;
 }
 
 message RegisterHttpToolResponse {

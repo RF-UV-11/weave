@@ -16,6 +16,7 @@ message CreateBotProfileRequest {
   repeated database.v1.Role roles_allowed = 6;
   string visibility = 7;
   repeated string guardrails = 8;
+  bool web_search_enabled = 9;
 }
 
 message CreateBotProfileResponse {

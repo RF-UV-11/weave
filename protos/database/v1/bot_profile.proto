@@ -32,4 +32,10 @@ message BotProfile {
   // visibility == "external". Checked against both the final answer and
   // any tool result before it enters the model's context.
   repeated string guardrails = 10;
+  // Vendor-controlled toggle: whether this bot profile may fall back to
+  // the built-in web-search tool when a turn doesn't match its registered
+  // tools. Defaults to false — a business must opt in, since web search
+  // sends the user's message to a public search engine, out of scope of
+  // this tenant's own systems.
+  bool web_search_enabled = 11;
 }

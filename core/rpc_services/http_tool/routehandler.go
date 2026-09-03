@@ -43,6 +43,20 @@ func (s *Server) RegisterHttpTool(ctx context.Context, req *dataaccessv1.Registe
 	if !allowedHTTPMethods[method] {
 		return nil, status.Error(codes.InvalidArgument, "http_method must be one of GET, POST, PUT, PATCH, DELETE")
 	}
+	visibility := req.GetVisibility()
+	if visibility == "" {
+		visibility = "internal"
+	}
+	if visibility != "internal" && visibility != "external" {
+		return nil, status.Error(codes.InvalidArgument, "visibility must be \"internal\" or \"external\"")
+	}
+	category := req.GetCategory()
+	if category == "" {
+		category = "general"
+	}
+	if category != "general" && category != "analytics" {
+		return nil, status.Error(codes.InvalidArgument, "category must be \"general\" or \"analytics\"")
+	}
 	// SSRF guard — mcp-gateway will make a real outbound request to this
 	// endpoint on the tenant's behalf every time the tool is called; see
 	// core/netguard for what this blocks and why.
@@ -65,7 +79,7 @@ func (s *Server) RegisterHttpTool(ctx context.Context, req *dataaccessv1.Registe
 	}
 
 	tool, err := mongodb.CreateHttpTool(ctx, req.GetTenantId(), connector.GetXId(), req.GetName(), req.GetDescription(),
-		req.GetHttpEndpoint(), method, req.GetParamsSchema(), credentialRefID)
+		req.GetHttpEndpoint(), method, req.GetParamsSchema(), credentialRefID, visibility, category)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

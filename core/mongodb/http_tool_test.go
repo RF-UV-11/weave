@@ -62,12 +62,15 @@ func TestCreateAndListHttpTools(t *testing.T) {
 	}
 
 	tool, err := CreateHttpTool(t.Context(), tenant.GetXId(), connector.GetXId(), "get_order_status",
-		"Look up an order's shipping status", "https://api.acme.test/orders/{id}", "GET", `{"type":"object"}`, "")
+		"Look up an order's shipping status", "https://api.acme.test/orders/{id}", "GET", `{"type":"object"}`, "", "external", "general")
 	if err != nil {
 		t.Fatalf("CreateHttpTool: %v", err)
 	}
 	if tool.GetName() != "get_order_status" {
 		t.Fatalf("got %+v", tool)
+	}
+	if tool.GetVisibility() != "external" || tool.GetCategory() != "general" {
+		t.Fatalf("visibility/category didn't round-trip: %+v", tool)
 	}
 
 	tools, err := ListHttpTools(t.Context(), tenant.GetXId())
@@ -92,7 +95,7 @@ func TestListHttpToolsIsolatedPerTenant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOrCreateManagedConnector: %v", err)
 	}
-	if _, err := CreateHttpTool(t.Context(), tenantA.GetXId(), connA.GetXId(), "shared_name", "desc", "https://x", "GET", "{}", ""); err != nil {
+	if _, err := CreateHttpTool(t.Context(), tenantA.GetXId(), connA.GetXId(), "shared_name", "desc", "https://x", "GET", "{}", "", "internal", "general"); err != nil {
 		t.Fatalf("CreateHttpTool: %v", err)
 	}
 
@@ -114,7 +117,7 @@ func TestDeleteHttpTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOrCreateManagedConnector: %v", err)
 	}
-	tool, err := CreateHttpTool(t.Context(), tenant.GetXId(), connector.GetXId(), "tool_to_delete", "desc", "https://x", "GET", "{}", "")
+	tool, err := CreateHttpTool(t.Context(), tenant.GetXId(), connector.GetXId(), "tool_to_delete", "desc", "https://x", "GET", "{}", "", "internal", "general")
 	if err != nil {
 		t.Fatalf("CreateHttpTool: %v", err)
 	}
