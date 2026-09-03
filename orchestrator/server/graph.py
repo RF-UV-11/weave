@@ -9,6 +9,12 @@ answer itself. That's `chat_service.py`'s job, via a single real
 streaming call on whatever message list this graph settles on, so the
 model is never asked to generate the same answer content twice (once to
 decide, once to stream).
+
+Guardrail screening (docs/architecture/SECURITY.md §6) happens here too,
+at the point a tool's result would enter the model's context — not only
+on the final answer in chat_service.py. A tool result that violates a
+guardrail is replaced with a redacted note before it ever reaches the
+model, rather than trusting the final-answer check alone to catch it.
 """
 
 from typing import Any, TypedDict
@@ -17,12 +23,15 @@ from langgraph.graph import END, StateGraph
 
 from llm.ollama_client import ToolCall, chat
 from mcp_client import call_tool
+from server.guardrails import screen
+from server.web_search import is_web_search, run_web_search
 from tools.assembly import AssembledTool
 
 
 class ChatState(TypedDict):
     messages: list[dict[str, str]]
     available_tools: list[AssembledTool]
+    guardrails: list[str]
     tool_used: str
     connector_used: str
     pending_call: ToolCall | None
@@ -47,6 +56,12 @@ async def _agent_node(state: ChatState) -> dict[str, Any]:
     return {"pending_call": None}
 
 
+async def _run_tool(match: AssembledTool, call: ToolCall) -> str:
+    if is_web_search(match.tool.name):
+        return await run_web_search(call.arguments.get("query", ""))
+    return await call_tool(match.endpoint, call.name, call.arguments)
+
+
 async def _tool_node(state: ChatState) -> dict[str, Any]:
     call = state["pending_call"]
     assert call is not None
@@ -58,7 +73,16 @@ async def _tool_node(state: ChatState) -> dict[str, Any]:
         tool_message = {"role": "tool", "content": f"Tool {call.name!r} is not available."}
         connector_used = ""
     else:
-        result_text = await call_tool(match.endpoint, call.name, call.arguments)
+        result_text = await _run_tool(match, call)
+
+        if state["guardrails"]:
+            verdict = await screen(result_text, state["guardrails"])
+            if not verdict.ok:
+                # Redacted before it ever reaches the model's context —
+                # the final-answer check in chat_service.py is a second
+                # line of defense, not the only one.
+                result_text = "[content withheld: this tool result could not be verified against policy]"
+
         # The tool's description travels with its result — the model
         # (and, via ChatStreamResponse.tool_used, the caller) never sees
         # a raw result without knowing what the tool claims to do
@@ -93,7 +117,11 @@ def build_graph():
 _GRAPH = build_graph()
 
 
-async def run_turn(messages: list[dict[str, str]], available_tools: list[AssembledTool]) -> ChatState:
+async def run_turn(
+    messages: list[dict[str, str]],
+    available_tools: list[AssembledTool],
+    guardrails: list[str] | None = None,
+) -> ChatState:
     """Decides whether a tool is needed and, if so, calls it. Returns the
     final state — state["messages"] is ready for the caller to stream a
     real answer from (see chat_service.py), and state["tool_used"]/
@@ -101,6 +129,7 @@ async def run_turn(messages: list[dict[str, str]], available_tools: list[Assembl
     initial: ChatState = {
         "messages": messages,
         "available_tools": available_tools,
+        "guardrails": guardrails or [],
         "tool_used": "",
         "connector_used": "",
         "pending_call": None,
