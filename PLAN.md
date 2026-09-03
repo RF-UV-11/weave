@@ -154,6 +154,27 @@ How to use this file: work top to bottom, don't start a phase until the previous
 
 ---
 
+## Phase 3.6 — Multi-agent Supervisor & Guardrails
+
+**Goal**: route each turn to the right specialist agent (tools vs. web) instead of always offering every tenant tool at once, and let a business declare an external-facing bot with content-disclosure rules that are actually enforced, not just prompted-and-hoped-for.
+
+- [x] `BotProfile.visibility` ("internal" | "external") + `BotProfile.guardrails` (free-text disclosure rules), validated in `CreateBotProfile`
+- [x] `orchestrator/server/router.py` — LLM classification into `tools` (the tenant's own registered connectors/HttpTools) or `web` (public search); `analytics` is an explicit, documented alias for `tools`, not a fabricated third capability — see `docs/architecture/ARCHITECTURE.md` §3
+- [x] `orchestrator/server/web_search.py` — built-in web-search tool (DuckDuckGo HTML endpoint, no API key), offered only on the `web` route
+- [x] `orchestrator/server/guardrails.py` — LLM-as-judge screening, two checkpoints: a tool's raw result before it enters context, and the final answer before it's sent
+- [x] `chat_service.py`: guardrail-active turns buffer the full answer (real streaming and hard guardrails are mutually exclusive — see `docs/architecture/SECURITY.md` §7) and send it chunked after passing the screen; non-guardrail turns keep genuine token streaming, unchanged
+
+**Definition of done**: ✅ **met.** Registered a tool whose real API response bundles order status with a supplier name, created an `external` profile with the guardrail "never disclose supplier names," and asked for both status and supplier in one message. Inspected the actual message the model received (not just its final answer) and confirmed the tool result was redacted to `[content withheld...]` *before* generation — the model never saw the supplier name, so it couldn't have disclosed it regardless of phrasing. Confirmed the guardrail judge genuinely discriminates (a control call with safe text passes, the same text with the supplier name fails) — the redaction isn't a blanket "always fail closed." Separately verified web routing: a general-knowledge question logged `route=web`, made a real `POST` to `https://html.duckduckgo.com/html/`, and answered correctly from real search results.
+
+**Notes**:
+- **A real, honest limitation found in live verification**: guardrail screening operates on the whole tool-result text, not per-field. Because the fake verification API returns status/eta/supplier as one JSON blob, *any* call to that tool gets redacted once a guardrail forbids supplier disclosure — even a query that only asked about shipping status, nothing to do with the supplier. Safe (fails toward less disclosure), but blunt. Field-level redaction is a real follow-up (either LLM-directed partial redaction, or marking specific schema fields sensitive so `mcp-gateway` strips them before returning), not built here — documented in `docs/architecture/SECURITY.md` §7 rather than silently left as a surprise.
+- **Streaming/guardrail tension was thought through before writing code, not discovered after**: a hard guardrail that actually prevents disclosure cannot coexist with real-time token streaming, since a token already sent can't be recalled. Buffering the full answer for guardrail-active turns only (not every turn) is the deliberate resolution — see `SECURITY.md` §7's explicit note not to "fix" this by trying to stream guardrail-checked content incrementally.
+- **"Analytics" is a routing category, not a capability** — there's no separate analytics data source (metrics store, BI connector type) in this system yet. Routing still classifies it distinctly so the alias is visible and can be swapped for a real backend later by changing one mapping, rather than pretending a capability exists that doesn't.
+- `orchestrator/server/web_search.py` uses regex extraction against DuckDuckGo's HTML-lite endpoint rather than a full HTML parser (avoids adding `beautifulsoup4` for what's currently one page's worth of scraping) — degrades to "no results" if DuckDuckGo's markup changes, not a crash, but is fragile by nature; swap for a real search API if reliability matters more than avoiding a paid dependency.
+- 22 new tests across `test_guardrails.py`, `test_router.py`, `test_web_search.py`, plus new cases in `test_graph.py` and `test_assembly.py` — 49 orchestrator tests total, all passing.
+
+---
+
 ## Phase 4+ — not yet planned in detail
 
 RAG, memory, multi-agent planning, `compute`, real channels (`web-widget`, WhatsApp, Slack), the `web` onboarding dashboard, observability (Langfuse/OTel), and deployment (Kubernetes) all follow the same shape as the architecture doc describes, but aren't broken into phases yet — do that once Phase 3's dynamic-tool-assembly milestone is real and proven, not before.

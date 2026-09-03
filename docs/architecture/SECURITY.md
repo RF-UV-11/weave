@@ -89,7 +89,17 @@ Every RPC on `core` is rate-limited — not just tenant-plan usage quotas (a bus
 
 ---
 
-## 7. Data protection
+## 7. Guardrails (content disclosure)
+
+`BotProfile.visibility` ("internal" | "external") + `BotProfile.guardrails` (free-text disclosure rules) — enforced only for external profiles, at two checkpoints in `orchestrator` (`server/graph.py`, `server/guardrails.py`): a tool's raw result before it enters the model's context, and the final answer before it's sent to the caller.
+
+- **Streaming and hard guardrails are mutually exclusive, by construction.** A token already sent over the wire can't be recalled, so any profile with active guardrails gets its full answer generated non-streamed, screened, and only then sent (chunked, for a comparable UX — not real token-by-token generation). Profiles with no guardrails keep genuine streaming. This is a deliberate scope boundary, not an oversight — don't "fix" it by trying to stream guardrail-checked content incrementally; that reintroduces the exact leak the buffering exists to prevent.
+- **The judge is the model itself (LLM-as-judge), not a keyword blocklist** — rules like "never disclose supplier names" don't reduce to a fixed string list. Fails **closed**: a judge-call error or an unparseable verdict is treated as a violation, never silently allowed through.
+- **Known limitation, found in live verification, not hidden**: screening operates on the whole tool-result blob, not per-field. If a tool's result bundles sensitive and non-sensitive data together (e.g. one API response containing both order status and supplier name), a guardrail violation redacts the *entire* result, not just the offending part — even for a query that never asked about the sensitive field. Correct and safe (fails toward less disclosure, not more), but blunt. Field-level redaction (either LLM-directed partial redaction, or a connector/tool schema marking specific fields sensitive so mcp-gateway can strip them before returning) is a real follow-up, not built here.
+
+---
+
+## 8. Data protection
 
 - Encryption in transit everywhere (TLS on every external hop; internal gRPC over the cluster network, mTLS as a hardening target once the platform has real tenants).
 - Encryption at rest for MongoDB, Redis persistence, and MinIO.
@@ -97,12 +107,12 @@ Every RPC on `core` is rate-limited — not just tenant-plan usage quotas (a bus
 
 ---
 
-## 8. Auditability
+## 9. Auditability
 
 Every planner decision, tool call, and MCP round trip is a traced span (Langfuse/OpenTelemetry) tagged with `tenant_id`, `bot_profile`, `user_id`, and `connector_id` where applicable — a tenant (or Weave's own operators) can reconstruct exactly which connector served which answer, and when a credential was used.
 
 ---
 
-## 9. Compliance posture (target, not yet achieved)
+## 10. Compliance posture (target, not yet achieved)
 
 Before onboarding real business tenants with sensitive systems, this platform needs: a documented data-processing agreement model, data-residency options, SOC2-track controls, and a published `SECURITY.md`-equivalent vulnerability disclosure process for the hosted product (distinct from this design doc). Tracked as a pre-requisite for any paid/production tenant, not assumed to already be true.
