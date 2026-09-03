@@ -64,7 +64,8 @@ mkdir -p "$SHARED_CLIENTS_GEN"
   "$PROTOS_DIR/core/data_access/v1/auth.proto" \
   "$PROTOS_DIR/core/data_access/v1/bot_profile.proto" \
   "$PROTOS_DIR/core/data_access/v1/http_tool.proto" \
-  "$PROTOS_DIR/core/data_access/v1/chat.proto"
+  "$PROTOS_DIR/core/data_access/v1/chat.proto" \
+  "$PROTOS_DIR/core/data_access/v1/memory.proto"
 find "$SHARED_CLIENTS_GEN" -type d -exec touch {}/__init__.py \;
 
 echo "==> Compiling orchestrator's own chat.proto"

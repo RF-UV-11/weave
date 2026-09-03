@@ -22,6 +22,7 @@ from core.data_access.v1 import bot_profile_pb2_grpc  # noqa: E402
 from core.data_access.v1 import chat_pb2_grpc  # noqa: E402
 from core.data_access.v1 import connector_pb2_grpc  # noqa: E402
 from core.data_access.v1 import http_tool_pb2_grpc  # noqa: E402
+from core.data_access.v1 import memory_pb2_grpc  # noqa: E402
 from core.data_access.v1 import tenant_pb2_grpc  # noqa: E402
 
 
@@ -46,6 +47,7 @@ class CoreClient:
         self.bot_profile = bot_profile_pb2_grpc.BotProfileServiceStub(self.channel)
         self.http_tool = http_tool_pb2_grpc.HttpToolServiceStub(self.channel)
         self.chat = chat_pb2_grpc.ChatServiceStub(self.channel)
+        self.memory = memory_pb2_grpc.MemoryServiceStub(self.channel)
 
     async def close(self) -> None:
         await self.channel.close()

@@ -13,6 +13,11 @@ import ollama
 
 MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
 HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
+# A dedicated embedding model, not the chat model above — nomic-embed-text
+# is a small model purpose-built for embeddings (768 dimensions, matching
+# core/configs's EMBEDDING_DIM default; the two must stay in sync, see
+# server/semantic_memory.py). Never used for chat/tool-calling.
+EMBED_MODEL = os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
 _client = ollama.AsyncClient(host=HOST)
 
@@ -64,3 +69,12 @@ async def chat_stream(messages: list[dict[str, str]]) -> AsyncIterator[str]:
     async for chunk in await _client.chat(model=MODEL, messages=messages, stream=True):
         if chunk.message.content:
             yield chunk.message.content
+
+
+async def embed(text: str) -> list[float]:
+    """Embeds text for long-term/semantic memory (docs/architecture/
+    ARCHITECTURE.md §5) — orchestrator computes the vector (it holds
+    LLM/embedding-model access) and hands it to core's MemoryService;
+    core never runs inference itself."""
+    resp = await _client.embed(model=EMBED_MODEL, input=text)
+    return list(resp.embeddings[0])

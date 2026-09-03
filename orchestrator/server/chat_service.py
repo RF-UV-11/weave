@@ -36,6 +36,7 @@ from server.auth import InvalidTokenError, bearer_token_from_metadata, verify_ac
 from server.graph import run_turn  # noqa: E402
 from server.guardrails import screen  # noqa: E402
 from server.router import classify_route  # noqa: E402
+from server.semantic_memory import recall, remember  # noqa: E402
 from server.session_memory import persist_turn, resolve_session  # noqa: E402
 from server.web_search import WEB_SEARCH_TOOL  # noqa: E402
 from tools.assembly import ToolAssemblyError, assemble_tools  # noqa: E402
@@ -102,6 +103,10 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
             session_id=request.session_id,
         )
 
+        relevant_facts = await recall(
+            self._core, tenant_id=claims.tenant_id, user_id=claims.user_id, token=token, query_text=request.message
+        )
+
         analytics_tools = assembly.analytics_tools
         route = await classify_route(
             request.message,
@@ -116,8 +121,17 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
         else:
             chosen_tools = assembly.tools
 
+        system_prompt = DEFAULT_SYSTEM_PROMPT
+        if relevant_facts:
+            # Cross-session recall (docs/architecture/ARCHITECTURE.md §5)
+            # — distinct from prior_messages above, which only ever
+            # covers this one session_id. These facts may come from any
+            # past conversation this user has had with this tenant.
+            facts_block = "\n".join(f"- {fact}" for fact in relevant_facts)
+            system_prompt += f"\n\nRelevant facts you know about this user from past conversations:\n{facts_block}"
+
         messages = [
-            {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             *prior_messages,
             {"role": "user", "content": request.message},
         ]
@@ -144,7 +158,7 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
 
         if assembly.guardrails_active:
             async for resp in self._guarded_response(
-                state, assembly.guardrails, session_id, claims.tenant_id, token, request.message
+                state, assembly.guardrails, session_id, claims.tenant_id, claims.user_id, token, request.message
             ):
                 yield resp
             return
@@ -170,6 +184,7 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
             tool_used=state["tool_used"],
             connector_used=state["connector_used"],
         )
+        await remember(self._core, tenant_id=claims.tenant_id, user_id=claims.user_id, token=token, text=request.message)
 
         yield chat_pb2.ChatStreamResponse(
             token="",
@@ -179,7 +194,7 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
             connector_used=state["connector_used"],
         )
 
-    async def _guarded_response(self, state, guardrails: list[str], session_id: str, tenant_id: str, token: str, user_message: str):
+    async def _guarded_response(self, state, guardrails: list[str], session_id: str, tenant_id: str, user_id: str, token: str, user_message: str):
         result = await chat(state["messages"])
         verdict = await screen(result.content, guardrails)
 
@@ -218,6 +233,7 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
             tool_used=state["tool_used"],
             connector_used=state["connector_used"],
         )
+        await remember(self._core, tenant_id=tenant_id, user_id=user_id, token=token, text=user_message)
 
         yield chat_pb2.ChatStreamResponse(
             token="",
