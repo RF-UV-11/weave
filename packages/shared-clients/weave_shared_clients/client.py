@@ -20,6 +20,7 @@ import grpc  # noqa: E402
 from core.data_access.v1 import auth_pb2_grpc  # noqa: E402
 from core.data_access.v1 import bot_profile_pb2_grpc  # noqa: E402
 from core.data_access.v1 import connector_pb2_grpc  # noqa: E402
+from core.data_access.v1 import http_tool_pb2_grpc  # noqa: E402
 from core.data_access.v1 import tenant_pb2_grpc  # noqa: E402
 
 
@@ -42,6 +43,7 @@ class CoreClient:
         self.connector = connector_pb2_grpc.ConnectorServiceStub(self.channel)
         self.auth = auth_pb2_grpc.AuthServiceStub(self.channel)
         self.bot_profile = bot_profile_pb2_grpc.BotProfileServiceStub(self.channel)
+        self.http_tool = http_tool_pb2_grpc.HttpToolServiceStub(self.channel)
 
     async def close(self) -> None:
         await self.channel.close()

@@ -57,10 +57,12 @@ mkdir -p "$SHARED_CLIENTS_GEN"
   "$PROTOS_DIR/database/v1/credential.proto" \
   "$PROTOS_DIR/database/v1/auth.proto" \
   "$PROTOS_DIR/database/v1/bot_profile.proto" \
+  "$PROTOS_DIR/database/v1/http_tool.proto" \
   "$PROTOS_DIR/core/data_access/v1/tenant.proto" \
   "$PROTOS_DIR/core/data_access/v1/connector.proto" \
   "$PROTOS_DIR/core/data_access/v1/auth.proto" \
-  "$PROTOS_DIR/core/data_access/v1/bot_profile.proto"
+  "$PROTOS_DIR/core/data_access/v1/bot_profile.proto" \
+  "$PROTOS_DIR/core/data_access/v1/http_tool.proto"
 find "$SHARED_CLIENTS_GEN" -type d -exec touch {}/__init__.py \;
 
 echo "==> Compiling orchestrator's own chat.proto"
