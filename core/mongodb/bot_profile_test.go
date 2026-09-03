@@ -105,3 +105,49 @@ func TestCreateBotProfilePersistsVisibilityAndGuardrails(t *testing.T) {
 		t.Fatalf("guardrails/visibility/web_search_enabled didn't round-trip: %+v", fetched)
 	}
 }
+
+func TestListBotProfiles(t *testing.T) {
+	tenant, err := CreateTenant(t.Context(), "List Bot Profiles Co", "business")
+	if err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	if _, err := CreateBotProfile(t.Context(), tenant.GetXId(), "external", "personas/external.md",
+		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil, false); err != nil {
+		t.Fatalf("CreateBotProfile external: %v", err)
+	}
+	if _, err := CreateBotProfile(t.Context(), tenant.GetXId(), "internal", "personas/internal.md",
+		nil, []string{"slack"}, []databasev1.Role{databasev1.Role_ROLE_STAFF}, "internal", nil, false); err != nil {
+		t.Fatalf("CreateBotProfile internal: %v", err)
+	}
+
+	profiles, err := ListBotProfiles(t.Context(), tenant.GetXId())
+	if err != nil {
+		t.Fatalf("ListBotProfiles: %v", err)
+	}
+	if len(profiles) != 2 {
+		t.Fatalf("expected 2 profiles, got %d", len(profiles))
+	}
+}
+
+func TestListBotProfilesIsolatedPerTenant(t *testing.T) {
+	tenantA, err := CreateTenant(t.Context(), "List Profiles Tenant A", "business")
+	if err != nil {
+		t.Fatalf("CreateTenant A: %v", err)
+	}
+	tenantB, err := CreateTenant(t.Context(), "List Profiles Tenant B", "business")
+	if err != nil {
+		t.Fatalf("CreateTenant B: %v", err)
+	}
+	if _, err := CreateBotProfile(t.Context(), tenantA.GetXId(), "external", "personas/external.md",
+		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil, false); err != nil {
+		t.Fatalf("CreateBotProfile A: %v", err)
+	}
+
+	profilesB, err := ListBotProfiles(t.Context(), tenantB.GetXId())
+	if err != nil {
+		t.Fatalf("ListBotProfiles B: %v", err)
+	}
+	if len(profilesB) != 0 {
+		t.Fatalf("expected tenant B to see no profiles, got %+v", profilesB)
+	}
+}

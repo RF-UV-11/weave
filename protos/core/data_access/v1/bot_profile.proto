@@ -32,7 +32,19 @@ message GetActiveBotProfileResponse {
   database.v1.BotProfile bot_profile = 1;
 }
 
+message ListBotProfilesRequest {
+  string tenant_id = 1;
+}
+
+message ListBotProfilesResponse {
+  repeated database.v1.BotProfile bot_profiles = 1;
+}
+
 service BotProfileService {
   rpc CreateBotProfile(CreateBotProfileRequest) returns (CreateBotProfileResponse);
   rpc GetActiveBotProfile(GetActiveBotProfileRequest) returns (GetActiveBotProfileResponse);
+  // Admin/onboarding UI use only (docs/architecture/ARCHITECTURE.md §1's
+  // web tier) — orchestrator resolves the active profile per turn via
+  // GetActiveBotProfile, never this.
+  rpc ListBotProfiles(ListBotProfilesRequest) returns (ListBotProfilesResponse);
 }

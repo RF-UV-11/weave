@@ -226,3 +226,38 @@ func TestCreateBotProfilePersistsGuardrails(t *testing.T) {
 		t.Fatalf("expected 2 guardrails, got %v", profile.GetGuardrails())
 	}
 }
+
+func TestListBotProfilesRequiresAuth(t *testing.T) {
+	s := NewServer()
+	_, err := s.ListBotProfiles(t.Context(), &dataaccessv1.ListBotProfilesRequest{TenantId: newTenant(t)})
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("expected Unauthenticated, got %v", err)
+	}
+}
+
+func TestListBotProfilesReturnsAllForTenant(t *testing.T) {
+	s := NewServer()
+	tenantID := newTenant(t)
+
+	for _, name := range []string{"external", "internal"} {
+		_, err := callAs(t, tenantID, "owner", func(ctx context.Context, req any) (any, error) {
+			return s.CreateBotProfile(ctx, &dataaccessv1.CreateBotProfileRequest{
+				TenantId: tenantID, Name: name, Channels: []string{"web-widget"},
+			})
+		})
+		if err != nil {
+			t.Fatalf("CreateBotProfile %q: %v", name, err)
+		}
+	}
+
+	resp, err := callAs(t, tenantID, "owner", func(ctx context.Context, req any) (any, error) {
+		return s.ListBotProfiles(ctx, &dataaccessv1.ListBotProfilesRequest{TenantId: tenantID})
+	})
+	if err != nil {
+		t.Fatalf("ListBotProfiles: %v", err)
+	}
+	profiles := resp.(*dataaccessv1.ListBotProfilesResponse).GetBotProfiles()
+	if len(profiles) != 2 {
+		t.Fatalf("expected 2 profiles, got %d", len(profiles))
+	}
+}

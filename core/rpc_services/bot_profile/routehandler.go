@@ -69,3 +69,22 @@ func (s *Server) GetActiveBotProfile(ctx context.Context, req *dataaccessv1.GetA
 	}
 	return &dataaccessv1.GetActiveBotProfileResponse{BotProfile: p}, nil
 }
+
+// ListBotProfiles is admin/onboarding UI use only (docs/architecture/
+// ARCHITECTURE.md §1's web tier) — requires an authenticated caller
+// scoped to the target tenant, same privilege level as reading any other
+// tenant-scoped resource.
+func (s *Server) ListBotProfiles(ctx context.Context, req *dataaccessv1.ListBotProfilesRequest) (*dataaccessv1.ListBotProfilesResponse, error) {
+	if req.GetTenantId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "tenant_id is required")
+	}
+	if err := sharedauth.RequireTenant(ctx, req.GetTenantId()); err != nil {
+		return nil, err
+	}
+
+	profiles, err := mongodb.ListBotProfiles(ctx, req.GetTenantId())
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &dataaccessv1.ListBotProfilesResponse{BotProfiles: profiles}, nil
+}

@@ -51,3 +51,25 @@ func GetBotProfile(ctx context.Context, tenantID, id string) (*databasev1.BotPro
 	}
 	return &p, nil
 }
+
+// ListBotProfiles is scoped to tenantID — same isolation rule as every
+// other lookup in core (docs/architecture/SECURITY.md §2). Admin UI use
+// only; orchestrator resolves the active profile per turn via
+// GetActiveBotProfileByChannel, never this.
+func ListBotProfiles(ctx context.Context, tenantID string) ([]*databasev1.BotProfile, error) {
+	cur, err := Db.Db.Collection(ColNames.BotProfiles).Find(ctx, bson.M{"tenant_id": tenantID})
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+
+	var profiles []*databasev1.BotProfile
+	for cur.Next(ctx) {
+		var p databasev1.BotProfile
+		if err := cur.Decode(&p); err != nil {
+			return nil, err
+		}
+		profiles = append(profiles, &p)
+	}
+	return profiles, cur.Err()
+}
