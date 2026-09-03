@@ -169,3 +169,16 @@ Every planner decision, tool call, and MCP round trip is a traced span (Langfuse
 ## 7. Deployment
 
 Local: Podman Compose brings up Mongo, Redis, Qdrant, MinIO, Envoy, `core`, `orchestrator`, `compute`, and `web`. Production: Kubernetes, one Deployment + Service per service, HPA on `orchestrator` and `core` at minimum. Tenant-owned MCP servers are **never** deployed by Weave's own infrastructure — they live wherever the tenant hosts them, reached over the network like any external API.
+
+---
+
+## 8. `web`
+
+Next.js 14 (App Router) + TypeScript + Tailwind + shadcn/ui, per `OVERVIEW.md` §5's committed stack. Two authenticated areas, both behind `RequireAuth`/`AdminLayout` guards backed by a client-side `AuthProvider` (JWT + tenant_id held in `localStorage`, never trusted server-side beyond what the JWT itself proves — same "never a client-supplied tenant_id" rule as everywhere else, `SECURITY.md` §2):
+
+- **`/chat`**: the customer/staff-facing chat experience — channel picker, streaming message thread, tool-used badges, "New chat" (drops the client-held `session_id`, letting `orchestrator` start a fresh one per §5's session memory).
+- **`/admin`**: tenant overview, bot-profile management (list + create, including guardrails/web-search/visibility), a read-only tools registry (visibility/category at a glance), and connectors — everything a business needs to see and shape without touching `core` directly.
+
+**No hand-written gRPC client code**: `web/buf.gen.yaml` runs `@bufbuild/protoc-gen-es` (target `ts`) over the same `protos/` tree Go/Python codegen uses, producing typed message/service descriptors in `src/gen/`; `@connectrpc/connect-web`'s `createGrpcWebTransport` + `createClient` turn those into real RPC clients — the same source of truth as every other language, not a hand-maintained REST shim.
+
+**Envoy is required and non-optional** — the browser cannot speak raw gRPC (`ChatStream` is a real server-streaming gRPC call), only grpc-web, which Envoy's `envoy.grpc_web` filter translates before forwarding to `orchestrator` (path prefix `/orchestrator.v1.`) or `core` (everything else). `infra/envoy/envoy.yaml` is the container-shaped config matching `podman-compose.yml`'s `envoy` service. A second file, `infra/envoy/envoy.local.yaml`, exists purely for a local-dev networking quirk (documented in that file's own comment): running Envoy as a native binary (e.g. via `func-e`) instead of in a container, because container-to-host-process routing didn't work reliably in this project's Windows/WSL2 podman setup even though DNS resolution (`host.containers.internal`) succeeded — the same class of issue `PLAN.md`'s earlier phases hit with podman networking, not a new architectural decision.

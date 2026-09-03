@@ -87,6 +87,25 @@ services:
       qdrant:
         condition: service_healthy
 
+  # grpc-web proxy (docs/architecture/ARCHITECTURE.md §4) — the browser
+  # (web/) never speaks raw gRPC, only grpc-web through this. orchestrator
+  # isn't containerized yet (still run via its own initialize.sh, same as
+  # mcp-gateway), so envoy.yaml's "orchestrator" cluster points at
+  # host.containers.internal:9091 — a real dev container reaching a
+  # locally-run process, not another container on this network.
+  envoy:
+    image: docker.io/envoyproxy/envoy:v1.31-latest
+    volumes:
+      - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    ports:
+      - "8090:8090"
+      - "9901:9901"
+    depends_on:
+      core:
+        condition: service_healthy
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+
 volumes:
   mongo-data:
   qdrant-data:

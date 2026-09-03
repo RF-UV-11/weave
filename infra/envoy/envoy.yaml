@@ -1,0 +1,99 @@
+# grpc-web proxy (docs/architecture/ARCHITECTURE.md §4): the browser
+# speaks grpc-web (HTTP/1.1-compatible framing), never raw gRPC — Envoy's
+# grpc_web filter translates that into real HTTP/2 gRPC before forwarding
+# to orchestrator (chat) or core (everything else the admin UI needs).
+# Terminates CORS here too, since this is the one edge a browser actually
+# talks to.
+static_resources:
+  listeners:
+    - name: web_ingress
+      address:
+        # 8080, the conventional choice, collides with other local dev
+        # tools/background apps often enough on a dev machine that 8090 is
+        # used instead — pick whatever's free in your own environment.
+        socket_address: { address: 0.0.0.0, port_value: 8090 }
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                codec_type: AUTO
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: weave
+                      domains: ["*"]
+                      cors:
+                        allow_origin_string_match:
+                          - safe_regex:
+                              regex: ".*"
+                        allow_methods: GET, PUT, DELETE, POST, OPTIONS
+                        allow_headers: keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout,authorization
+                        expose_headers: grpc-status,grpc-message
+                        max_age: "1728000"
+                      routes:
+                        # orchestrator.v1.ChatService lives on orchestrator,
+                        # not core — routed first since it's a name prefix
+                        # match against the same domain.
+                        - match: { prefix: "/orchestrator.v1." }
+                          route:
+                            cluster: orchestrator
+                            timeout: 0s
+                            max_stream_duration:
+                              grpc_timeout_header_max: 0s
+                        - match: { prefix: "/" }
+                          route:
+                            cluster: core
+                            timeout: 0s
+                            max_stream_duration:
+                              grpc_timeout_header_max: 0s
+                http_filters:
+                  - name: envoy.filters.http.grpc_web
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_web.v3.GrpcWeb
+                  - name: envoy.filters.http.cors
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+    - name: core
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
+      load_assignment:
+        cluster_name: core
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: core, port_value: 9090 }
+    - name: orchestrator
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
+      load_assignment:
+        cluster_name: orchestrator
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  # orchestrator isn't containerized yet (podman-compose.yml's
+                  # comment on the envoy service explains why) — this reaches
+                  # a locally-run process on the host, not a sibling container.
+                  address:
+                    socket_address: { address: host.containers.internal, port_value: 9091 }
+admin:
+  address:
+    socket_address: { address: 0.0.0.0, port_value: 9901 }
