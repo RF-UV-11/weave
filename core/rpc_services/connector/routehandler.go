@@ -10,6 +10,7 @@ import (
 	dataaccessv1 "weave/core/gen/core/data_access/v1"
 	"weave/core/mcpclient"
 	"weave/core/mongodb"
+	"weave/core/netguard"
 )
 
 func (s *Server) RegisterConnector(ctx context.Context, req *dataaccessv1.RegisterConnectorRequest) (*dataaccessv1.RegisterConnectorResponse, error) {
@@ -25,6 +26,15 @@ func (s *Server) RegisterConnector(ctx context.Context, req *dataaccessv1.Regist
 	}
 	if req.GetEndpoint() == "" {
 		return nil, status.Error(codes.InvalidArgument, "endpoint is required")
+	}
+	if transport == "http" {
+		// SSRF guard: a tenant-supplied endpoint must not resolve to
+		// internal/private infrastructure — core (and, transitively,
+		// orchestrator/mcp-gateway) will make real outbound requests to
+		// it. See core/netguard for what this blocks and why.
+		if err := netguard.ValidatePublicURL(ctx, s.resolver, req.GetEndpoint(), s.allowPrivate); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
 	}
 
 	c, err := mongodb.CreateConnector(ctx, req.GetTenantId(), req.GetName(), transport, req.GetEndpoint(), "")

@@ -56,5 +56,13 @@ func EnsureIndexes(ctx context.Context) error {
 		return err
 	}
 
+	// An HTTP tool's name is unique per tenant, same reasoning as connectors.
+	if _, err := Db.Db.Collection(ColNames.HttpTools).Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "tenant_id", Value: 1}, {Key: "name", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	}); err != nil {
+		return err
+	}
+
 	return nil
 }

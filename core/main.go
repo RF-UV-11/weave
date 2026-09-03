@@ -16,6 +16,7 @@ import (
 	"weave/core/rpc_services/auth"
 	"weave/core/rpc_services/bot_profile"
 	"weave/core/rpc_services/connector"
+	"weave/core/rpc_services/http_tool"
 	"weave/core/rpc_services/tenant"
 	"weave/core/vault"
 	sharedauth "weave/packages/shared-auth"
@@ -39,6 +40,12 @@ var unauthenticatedMethods = []string{
 	"/core.data_access.v1.ConnectorService/ListConnectors",
 	"/core.data_access.v1.ConnectorService/RefreshManifest",
 	"/core.data_access.v1.ConnectorService/DeregisterConnector",
+	// mcp-gateway calls this per tools/list request with no per-end-user
+	// JWT to present — same reasoning as ConnectorService/ListConnectors
+	// above. RegisterHttpTool/DeregisterHttpTool are NOT here: those stay
+	// behind auth (owner/admin), enforced inside the handler itself.
+	"/core.data_access.v1.HttpToolService/ListHttpTools",
+	"/core.data_access.v1.HttpToolService/RevealHttpToolCredential",
 	"/grpc.health.v1.Health/Check",
 	"/grpc.health.v1.Health/Watch",
 	"/grpc.reflection.v1.ServerReflection/ServerReflectionInfo",
@@ -98,9 +105,10 @@ func main() {
 		),
 	)
 	dataaccessv1.RegisterTenantServiceServer(grpcServer, tenant.NewServer())
-	dataaccessv1.RegisterConnectorServiceServer(grpcServer, connector.NewServer(v))
+	dataaccessv1.RegisterConnectorServiceServer(grpcServer, connector.NewServer(v, net.DefaultResolver, cfg.AllowPrivateEndpoints))
 	dataaccessv1.RegisterAuthServiceServer(grpcServer, auth.NewServer(jwtSecret))
 	dataaccessv1.RegisterBotProfileServiceServer(grpcServer, botprofile.NewServer())
+	dataaccessv1.RegisterHttpToolServiceServer(grpcServer, httptool.NewServer(v, cfg.MCPGatewayURL, net.DefaultResolver, cfg.AllowPrivateEndpoints))
 
 	healthServer := health.NewServer()
 	healthv1.RegisterHealthServer(grpcServer, healthServer)

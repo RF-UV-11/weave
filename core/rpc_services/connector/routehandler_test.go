@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -53,8 +54,23 @@ func newTenant(t *testing.T) string {
 	return tn.GetXId()
 }
 
+func TestRegisterConnectorRejectsPrivateEndpointWhenNotAllowed(t *testing.T) {
+	// Proves the SSRF guard (core/netguard) is actually wired in and
+	// active by default — every other test in this file passes
+	// allowPrivate=true purely because local dev/test fixtures run on
+	// loopback; this test is the one that exercises the real,
+	// secure-by-default posture.
+	s := NewServer(testVault, net.DefaultResolver, false)
+	_, err := s.RegisterConnector(t.Context(), &dataaccessv1.RegisterConnectorRequest{
+		TenantId: newTenant(t), Name: "x", Transport: "http", Endpoint: "http://127.0.0.1:9999",
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument for a loopback endpoint, got %v", err)
+	}
+}
+
 func TestRegisterConnectorRequiresTenantID(t *testing.T) {
-	s := NewServer(testVault)
+	s := NewServer(testVault, net.DefaultResolver, true)
 	_, err := s.RegisterConnector(t.Context(), &dataaccessv1.RegisterConnectorRequest{
 		Name: "x", Transport: "http", Endpoint: "http://example.invalid",
 	})
@@ -64,7 +80,7 @@ func TestRegisterConnectorRequiresTenantID(t *testing.T) {
 }
 
 func TestRegisterConnectorRejectsUnknownTransport(t *testing.T) {
-	s := NewServer(testVault)
+	s := NewServer(testVault, net.DefaultResolver, true)
 	_, err := s.RegisterConnector(t.Context(), &dataaccessv1.RegisterConnectorRequest{
 		TenantId: newTenant(t), Name: "x", Transport: "carrier-pigeon", Endpoint: "http://example.invalid",
 	})
@@ -74,7 +90,7 @@ func TestRegisterConnectorRejectsUnknownTransport(t *testing.T) {
 }
 
 func TestRegisterConnectorEncryptsCredential(t *testing.T) {
-	s := NewServer(testVault)
+	s := NewServer(testVault, net.DefaultResolver, true)
 	tenantID := newTenant(t)
 
 	resp, err := s.RegisterConnector(t.Context(), &dataaccessv1.RegisterConnectorRequest{
@@ -108,7 +124,7 @@ func TestRegisterConnectorEncryptsCredential(t *testing.T) {
 }
 
 func TestListConnectorsIsolatedPerTenant(t *testing.T) {
-	s := NewServer(testVault)
+	s := NewServer(testVault, net.DefaultResolver, true)
 	tenantA := newTenant(t)
 	tenantB := newTenant(t)
 
@@ -144,7 +160,7 @@ func TestRefreshManifestCachesToolsList(t *testing.T) {
 	}))
 	defer stub.Close()
 
-	s := NewServer(testVault)
+	s := NewServer(testVault, net.DefaultResolver, true)
 	tenantID := newTenant(t)
 	reg, err := s.RegisterConnector(t.Context(), &dataaccessv1.RegisterConnectorRequest{
 		TenantId: tenantID, Name: "booking-mcp", Transport: "http", Endpoint: stub.URL,
@@ -177,7 +193,7 @@ func TestRefreshManifestRejectsToolMissingDescription(t *testing.T) {
 	}))
 	defer stub.Close()
 
-	s := NewServer(testVault)
+	s := NewServer(testVault, net.DefaultResolver, true)
 	tenantID := newTenant(t)
 	reg, err := s.RegisterConnector(t.Context(), &dataaccessv1.RegisterConnectorRequest{
 		TenantId: tenantID, Name: "undescribed-mcp", Transport: "http", Endpoint: stub.URL,
@@ -203,7 +219,7 @@ func TestRefreshManifestRejectsToolMissingDescription(t *testing.T) {
 }
 
 func TestRefreshManifestMarksErrorOnUnreachableConnector(t *testing.T) {
-	s := NewServer(testVault)
+	s := NewServer(testVault, net.DefaultResolver, true)
 	tenantID := newTenant(t)
 	reg, err := s.RegisterConnector(t.Context(), &dataaccessv1.RegisterConnectorRequest{
 		TenantId: tenantID, Name: "unreachable-mcp", Transport: "http", Endpoint: "http://127.0.0.1:1",
@@ -228,7 +244,7 @@ func TestRefreshManifestMarksErrorOnUnreachableConnector(t *testing.T) {
 }
 
 func TestDeregisterConnectorRemovesConnectorAndCredential(t *testing.T) {
-	s := NewServer(testVault)
+	s := NewServer(testVault, net.DefaultResolver, true)
 	tenantID := newTenant(t)
 	reg, err := s.RegisterConnector(t.Context(), &dataaccessv1.RegisterConnectorRequest{
 		TenantId: tenantID, Name: "booking-mcp", Transport: "http", Endpoint: "http://example.invalid",
@@ -254,7 +270,7 @@ func TestDeregisterConnectorRemovesConnectorAndCredential(t *testing.T) {
 }
 
 func TestDeregisterConnectorWrongTenantNotFound(t *testing.T) {
-	s := NewServer(testVault)
+	s := NewServer(testVault, net.DefaultResolver, true)
 	tenantA := newTenant(t)
 	tenantB := newTenant(t)
 	reg, err := s.RegisterConnector(t.Context(), &dataaccessv1.RegisterConnectorRequest{
