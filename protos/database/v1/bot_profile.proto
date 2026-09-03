@@ -20,4 +20,16 @@ message BotProfile {
   repeated string channels = 6;
   repeated Role roles_allowed = 7;
   string created_at = 8;
+  // "internal" | "external". An external profile gets guardrail
+  // enforcement (docs/architecture/SECURITY.md §6); internal profiles
+  // (staff-facing) don't — the tradeoff is deliberate, not an oversight:
+  // guardrail screening buffers the full answer instead of streaming it
+  // token-by-token (see orchestrator/server/guardrails.py), so it only
+  // applies where the disclosure risk justifies the latency cost.
+  string visibility = 9;
+  // Free-text rules the business doesn't want disclosed, e.g. "Never
+  // reveal internal SKU codes or supplier names." Only enforced when
+  // visibility == "external". Checked against both the final answer and
+  // any tool result before it enters the model's context.
+  repeated string guardrails = 10;
 }

@@ -31,9 +31,16 @@ func (s *Server) CreateBotProfile(ctx context.Context, req *dataaccessv1.CreateB
 	if len(req.GetChannels()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "at least one channel is required")
 	}
+	visibility := req.GetVisibility()
+	if visibility == "" {
+		visibility = "internal"
+	}
+	if visibility != "internal" && visibility != "external" {
+		return nil, status.Error(codes.InvalidArgument, "visibility must be \"internal\" or \"external\"")
+	}
 
 	p, err := mongodb.CreateBotProfile(ctx, req.GetTenantId(), req.GetName(), req.GetPersona(),
-		req.GetConnectorIds(), req.GetChannels(), req.GetRolesAllowed())
+		req.GetConnectorIds(), req.GetChannels(), req.GetRolesAllowed(), visibility, req.GetGuardrails())
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

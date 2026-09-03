@@ -14,6 +14,8 @@ message CreateBotProfileRequest {
   repeated string connector_ids = 4;
   repeated string channels = 5;
   repeated database.v1.Role roles_allowed = 6;
+  string visibility = 7;
+  repeated string guardrails = 8;
 }
 
 message CreateBotProfileResponse {

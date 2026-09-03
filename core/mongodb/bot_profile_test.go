@@ -13,12 +13,12 @@ func TestCreateAndGetActiveBotProfileByChannel(t *testing.T) {
 	}
 
 	external, err := CreateBotProfile(t.Context(), tenant.GetXId(), "external", "personas/external.md",
-		nil, []string{"web-widget", "whatsapp"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER})
+		nil, []string{"web-widget", "whatsapp"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil)
 	if err != nil {
 		t.Fatalf("CreateBotProfile external: %v", err)
 	}
 	internal, err := CreateBotProfile(t.Context(), tenant.GetXId(), "internal", "personas/internal.md",
-		nil, []string{"slack"}, []databasev1.Role{databasev1.Role_ROLE_STAFF, databasev1.Role_ROLE_ADMIN})
+		nil, []string{"slack"}, []databasev1.Role{databasev1.Role_ROLE_STAFF, databasev1.Role_ROLE_ADMIN}, "internal", nil)
 	if err != nil {
 		t.Fatalf("CreateBotProfile internal: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestGetActiveBotProfileByChannelIsolatedPerTenant(t *testing.T) {
 	}
 
 	if _, err := CreateBotProfile(t.Context(), tenantA.GetXId(), "external", "personas/external.md",
-		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}); err != nil {
+		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil); err != nil {
 		t.Fatalf("CreateBotProfile A: %v", err)
 	}
 
@@ -66,11 +66,39 @@ func TestGetActiveBotProfileByChannelNoMatch(t *testing.T) {
 		t.Fatalf("CreateTenant: %v", err)
 	}
 	if _, err := CreateBotProfile(t.Context(), tenant.GetXId(), "external", "personas/external.md",
-		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}); err != nil {
+		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil); err != nil {
 		t.Fatalf("CreateBotProfile: %v", err)
 	}
 
 	if _, err := GetActiveBotProfileByChannel(t.Context(), tenant.GetXId(), "whatsapp"); err == nil {
 		t.Fatal("expected no match for an unregistered channel")
+	}
+}
+
+func TestCreateBotProfilePersistsVisibilityAndGuardrails(t *testing.T) {
+	tenant, err := CreateTenant(t.Context(), "Guardrail Test Co", "business")
+	if err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+
+	guardrails := []string{"Never disclose internal SKU codes.", "Never disclose supplier names."}
+	profile, err := CreateBotProfile(t.Context(), tenant.GetXId(), "external", "personas/external.md",
+		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", guardrails)
+	if err != nil {
+		t.Fatalf("CreateBotProfile: %v", err)
+	}
+	if profile.GetVisibility() != "external" {
+		t.Fatalf("got visibility %q", profile.GetVisibility())
+	}
+	if len(profile.GetGuardrails()) != 2 {
+		t.Fatalf("expected 2 guardrails, got %v", profile.GetGuardrails())
+	}
+
+	fetched, err := GetActiveBotProfileByChannel(t.Context(), tenant.GetXId(), "web-widget")
+	if err != nil {
+		t.Fatalf("GetActiveBotProfileByChannel: %v", err)
+	}
+	if fetched.GetVisibility() != "external" || len(fetched.GetGuardrails()) != 2 {
+		t.Fatalf("guardrails/visibility didn't round-trip: %+v", fetched)
 	}
 }

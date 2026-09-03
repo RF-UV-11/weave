@@ -175,3 +175,54 @@ func TestGetActiveBotProfileNotFoundForUnregisteredChannel(t *testing.T) {
 		t.Fatalf("expected NotFound, got %v", err)
 	}
 }
+
+func TestCreateBotProfileDefaultsVisibilityToInternal(t *testing.T) {
+	s := NewServer()
+	tenantID := newTenant(t)
+	resp, err := callAs(t, tenantID, "owner", func(ctx context.Context, req any) (any, error) {
+		return s.CreateBotProfile(ctx, &dataaccessv1.CreateBotProfileRequest{
+			TenantId: tenantID, Name: "unspecified-visibility", Channels: []string{"web-widget"},
+		})
+	})
+	if err != nil {
+		t.Fatalf("CreateBotProfile: %v", err)
+	}
+	if got := resp.(*dataaccessv1.CreateBotProfileResponse).GetBotProfile().GetVisibility(); got != "internal" {
+		t.Fatalf("expected default visibility \"internal\", got %q", got)
+	}
+}
+
+func TestCreateBotProfileRejectsInvalidVisibility(t *testing.T) {
+	s := NewServer()
+	tenantID := newTenant(t)
+	_, err := callAs(t, tenantID, "owner", func(ctx context.Context, req any) (any, error) {
+		return s.CreateBotProfile(ctx, &dataaccessv1.CreateBotProfileRequest{
+			TenantId: tenantID, Name: "bad-visibility", Channels: []string{"web-widget"}, Visibility: "public",
+		})
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
+	}
+}
+
+func TestCreateBotProfilePersistsGuardrails(t *testing.T) {
+	s := NewServer()
+	tenantID := newTenant(t)
+	guardrails := []string{"Never disclose internal SKU codes.", "Never disclose supplier names."}
+	resp, err := callAs(t, tenantID, "owner", func(ctx context.Context, req any) (any, error) {
+		return s.CreateBotProfile(ctx, &dataaccessv1.CreateBotProfileRequest{
+			TenantId: tenantID, Name: "guarded", Channels: []string{"web-widget"},
+			Visibility: "external", Guardrails: guardrails,
+		})
+	})
+	if err != nil {
+		t.Fatalf("CreateBotProfile: %v", err)
+	}
+	profile := resp.(*dataaccessv1.CreateBotProfileResponse).GetBotProfile()
+	if profile.GetVisibility() != "external" {
+		t.Fatalf("got visibility %q", profile.GetVisibility())
+	}
+	if len(profile.GetGuardrails()) != 2 {
+		t.Fatalf("expected 2 guardrails, got %v", profile.GetGuardrails())
+	}
+}
