@@ -1,6 +1,9 @@
 package configs
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
 
 type Vars struct {
 	MongoURI              string
@@ -11,6 +14,8 @@ type Vars struct {
 	RedisURI              string
 	MCPGatewayURL         string
 	AllowPrivateEndpoints bool
+	QdrantAddr            string
+	EmbeddingDim          int
 }
 
 func Load() Vars {
@@ -27,6 +32,13 @@ func Load() Vars {
 		// loopback). Never set this in a real deployment; see
 		// core/netguard's doc comment for what it disables.
 		AllowPrivateEndpoints: getenv("ALLOW_PRIVATE_ENDPOINTS", "") == "true",
+		QdrantAddr:            getenv("QDRANT_ADDR", "localhost:6334"),
+		// Must match whatever embedding model orchestrator actually calls
+		// (llm/ollama_client.py's EMBED_MODEL) — Qdrant collections are
+		// created with a fixed vector size, so a mismatch fails loudly at
+		// upsert time rather than silently truncating/padding.
+		// nomic-embed-text (the default) is 768-dimensional.
+		EmbeddingDim: getenvInt("EMBEDDING_DIM", 768),
 	}
 }
 
@@ -35,4 +47,16 @@ func getenv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func getenvInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
 }

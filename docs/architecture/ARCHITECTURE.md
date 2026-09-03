@@ -134,8 +134,29 @@ Every collection is tenant-scoped (`tenant_id` field + compound index), same as 
 
 ## 5. RAG and memory
 
-- **RAG sources are pluralized.** A tenant's knowledge base can be Weave-hosted documents *or* MCP resources exposed by their own systems (a wiki, a doc store) — the ingestion pipeline pulls from either, chunks, embeds, and writes to a **per-tenant Qdrant collection**.
-- **Memory** follows the same short-term (Redis, session-scoped) / long-term (Mongo + Qdrant semantic recall) split as the request lifecycle above — written and read only through `core`'s chat RPCs, never directly by `orchestrator`.
+- **RAG sources are pluralized.** A tenant's knowledge base can be Weave-hosted documents *or* MCP resources exposed by their own systems (a wiki, a doc store) — the ingestion pipeline pulls from either, chunks, embeds, and writes to a **per-tenant Qdrant collection**. Not yet built.
+- **Memory has two tiers, both written and read only through `core`, never held by `orchestrator` directly**:
+  - **Session memory** (`core.ChatService`, Mongo-backed `chat_sessions`/`chat_messages`): every turn's user/assistant messages, scoped to one conversation. `orchestrator/server/session_memory.py` loads prior turns before generating and appends both sides after — real multi-turn context, not per-call statelessness. Fails soft on any `core` error (a turn degrades to "no prior context," never fails outright).
+  - **Long-term/semantic memory** (`core.MemoryService`, Qdrant-backed, one collection per tenant named `mem_{tenant_id}` — same isolation decision as RAG above, and the same collection additionally filters by `user_id` in each point's payload so one user's memories never surface for another user of the same tenant). `orchestrator` computes the embedding (it holds LLM/embedding-model access; `core` never runs inference) via Ollama's embedding endpoint and hands `core` the vector — `core` remains the only tier holding the Qdrant connection itself. Qdrant point ids are UUIDs (a real constraint of the store), not this codebase's usual ULID convention.
+
+```mermaid
+sequenceDiagram
+    participant O as orchestrator
+    participant Ollama as Ollama (embed)
+    participant C as core
+    participant Q as Qdrant
+
+    O->>Ollama: embed(user message)
+    Ollama-->>O: vector
+    O->>C: MemoryService.SearchMemory(tenant_id, user_id, vector)
+    C->>Q: Query(collection=mem_{tenant_id}, filter user_id)
+    Q-->>C: top-k matches
+    C-->>O: results
+    Note over O: relevant facts spliced into<br/>this turn's system prompt
+    O->>Ollama: embed(user message) (for storage)
+    O->>C: MemoryService.UpsertMemory(tenant_id, user_id, text, vector)
+    C->>Q: Upsert point
+```
 
 ---
 

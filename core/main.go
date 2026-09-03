@@ -13,11 +13,13 @@ import (
 	"weave/core/configs"
 	dataaccessv1 "weave/core/gen/core/data_access/v1"
 	"weave/core/mongodb"
+	"weave/core/qdrant"
 	"weave/core/rpc_services/auth"
 	"weave/core/rpc_services/bot_profile"
 	"weave/core/rpc_services/chat"
 	"weave/core/rpc_services/connector"
 	"weave/core/rpc_services/http_tool"
+	"weave/core/rpc_services/memory"
 	"weave/core/rpc_services/tenant"
 	"weave/core/vault"
 	sharedauth "weave/packages/shared-auth"
@@ -94,6 +96,11 @@ func main() {
 		log.Fatalf("ratelimit: %v", err)
 	}
 
+	qc, err := qdrant.New(cfg.QdrantAddr, cfg.EmbeddingDim)
+	if err != nil {
+		log.Fatalf("qdrant: %v", err)
+	}
+
 	lis, err := net.Listen("tcp", cfg.GRPCAddr)
 	if err != nil {
 		log.Fatalf("listen: %v", err)
@@ -111,6 +118,7 @@ func main() {
 	dataaccessv1.RegisterBotProfileServiceServer(grpcServer, botprofile.NewServer())
 	dataaccessv1.RegisterHttpToolServiceServer(grpcServer, httptool.NewServer(v, cfg.MCPGatewayURL, net.DefaultResolver, cfg.AllowPrivateEndpoints))
 	dataaccessv1.RegisterChatServiceServer(grpcServer, chat.NewServer())
+	dataaccessv1.RegisterMemoryServiceServer(grpcServer, memory.NewServer(qc))
 
 	healthServer := health.NewServer()
 	healthv1.RegisterHealthServer(grpcServer, healthServer)

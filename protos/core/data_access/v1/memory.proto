@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package core.data_access.v1;
+
+option go_package = "weave/core/gen/core/data_access/v1;dataaccessv1";
+
+// Long-term/semantic memory (docs/architecture/ARCHITECTURE.md §5):
+// backed by a per-tenant Qdrant collection (docs/architecture/
+// SECURITY.md §2's isolation decision). orchestrator computes the
+// embedding (it holds the LLM/embedding-model access — core never runs
+// inference) and sends the vector here; core is the only tier holding
+// Qdrant credentials/connection, same "orchestrator never holds a
+// database connection" rule as everything else on this tier.
+message UpsertMemoryRequest {
+  string tenant_id = 1;
+  string user_id = 2;
+  string text = 3;
+  repeated float embedding = 4;
+}
+
+message UpsertMemoryResponse {
+  string memory_id = 1;
+}
+
+message SearchMemoryRequest {
+  string tenant_id = 1;
+  string user_id = 2;
+  repeated float query_embedding = 3;
+  // Defaults to a server-side value (see core/rpc_services/memory) if 0.
+  int32 top_k = 4;
+}
+
+message MemoryResult {
+  string memory_id = 1;
+  string text = 2;
+  // Cosine similarity, higher is more relevant.
+  float score = 3;
+}
+
+message SearchMemoryResponse {
+  repeated MemoryResult results = 1;
+}
+
+service MemoryService {
+  rpc UpsertMemory(UpsertMemoryRequest) returns (UpsertMemoryResponse);
+  rpc SearchMemory(SearchMemoryRequest) returns (SearchMemoryResponse);
+}
