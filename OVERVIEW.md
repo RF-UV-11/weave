@@ -138,7 +138,9 @@ weave/
 │                      MCP client, dynamic tool assembly, RAG, memory
 ├── compute/           Python — grouped, platform-generic compute (optional; see §4 tradeoff notes)
 ├── connectors/        Reference MCP server(s) + connector templates (SDK for tenants
-│                      who want to scaffold a connector instead of hand-writing MCP)
+│                      who want to scaffold a connector instead of hand-writing MCP) —
+│                      Weave's own scaffolding only, never a tenant's actual business
+│                      code (that lives in the tenant's own repo — see below)
 ├── channels/          web-widget/, whatsapp/, slack/ — thin adapters, no business logic
 ├── web/               Next.js app: onboarding dashboard, admin console, chat UI,
 │                      embeddable widget build
@@ -151,6 +153,8 @@ weave/
     ├── architecture/  ARCHITECTURE.md, SECURITY.md
     └── ...
 ```
+
+**Demo tenants live outside this repo entirely.** A tenant's integration — their systems description, tool registration, bot profiles — is their own code, in their own codebase, the same way a real customer's would never be committed here. Two reference integrations exist as sibling projects to `weave/`, each its own independent git repo: `tarang-electronics` (an Indian consumer-electronics retailer, B2C) and `suvidha-finserve` (an Indian accounting/bookkeeping firm, B2B). Both install the `weave` SDK from `packages/weave-sdk` and walk the same six-step onboarding flow (sign up, authenticate, describe systems, shape bots, connect a channel, go live) — read either project's README for the full walkthrough.
 
 ## 7. Bot profiles — concrete shape
 

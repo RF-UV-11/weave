@@ -244,7 +244,7 @@ How to use this file: work top to bottom, don't start a phase until the previous
 
 ---
 
-## Phase 3.9 — Two separate, India-based demo tenants as external projects (plan, not yet started)
+## Phase 3.9 — Two separate, India-based demo tenants as external projects
 
 **Goal**: demonstrate how Weave is *actually* used — a business's own team, in their own separate codebase, installs the `weave` SDK and connects their existing systems. That means **zero demo-tenant business code lives anywhere in this repo**, not even under `connectors/` (explicit correction from the previous draft of this plan, which had proposed keeping the demos in `connectors/demo-*` — still inside `weave/`). `connectors/` is for Weave's own reference/scaffolding material (`reference-mcp`, `dev-stub-mcp`) — a *tenant's* integration code is never part of the platform repo, by the same logic `ARCHITECTURE.md` §1 already states for tenant-owned MCP servers ("never deployed by Weave's own infrastructure").
 
@@ -252,26 +252,26 @@ How to use this file: work top to bottom, don't start a phase until the previous
 
 Decided via explicit user choice: **repurpose the content currently at `connectors/demo-acme-electronics`** into the e-commerce project (rebrand, not delete-and-rebuild) — but relocate it out of `weave/` entirely as part of that repurposing, per the correction above.
 
-### Demo 1 — E-commerce (relocated + repurposed from `connectors/demo-acme-electronics`)
+### Demo 1 — E-commerce (relocated + repurposed from `connectors/demo-acme-electronics`) ✅
 
-- [ ] `git mv`/relocate the directory's contents out of this repo to a new sibling project (proposed name: **Tarang Electronics** — "Tarang" = "wave" in Hindi, a deliberate nod to the platform name; fictional, not modeled on any real company) — final name/location is the user's call, this is a proposal to confirm before implementation starts.
-- [ ] Remove `connectors/demo-acme-electronics/` from this repo entirely once relocated — no leftover copy in `weave/`.
-- [ ] `git init` the new location as its own repository, independent history from `weave/`.
-- [ ] Rework `data.py`: INR pricing (₹), Indian product catalog (keep the existing shape — laptops/earbuds/headphones/monitors — swap in Indian-market SKUs/brand-flavored names), Indian customer names (e.g. Priya Sharma, Arjun Mehta, Kavya Reddy), Indian addresses (city/state/PIN code), `+91` phone format.
-- [ ] Add GST fields to internal-only order/invoice data (GSTIN, HSN code, CGST/SGST/IGST breakdown) — realistic for an Indian retailer's backend, and a natural way to demonstrate more sensitive internal-only data than the original demo had.
-- [ ] Rework `api.py`: same external/internal route shape (3 external: order status, product info, warranty; 5 internal: customer PII, full order detail incl. GST/cost, inventory, sales analytics, customer-activity analytics) — only the data changes, not the architecture being demonstrated.
-- [ ] Rework `setup_weave.py`: new business name and persona copy in tool descriptions and bot-profile guardrails; installs `weave` via a path/git dependency on `weave/packages/weave-sdk` (documented in this project's own `initialize.sh`, not assumed).
-- [ ] Update `tests/test_api.py` for the new data (same assertions, new fixture values).
-- [ ] Live-verify same as before: real `core`+`mcp-gateway`+demo-API stack (the platform, run from `weave/`), `setup_weave.py` run from the external project, `assemble_tools()` visibility check.
+- [x] Relocated to a new sibling project: `y:\YY\Yuvraj-Dev\tarang-electronics` — **Tarang Electronics** ("Tarang" = "wave" in Hindi, a deliberate nod to the platform name; fictional, not modeled on any real company). Content retrieved from this repo's own git history (`git show` against the pre-removal commit), not hand-retyped.
+- [x] `connectors/demo-acme-electronics/` already removed from this repo (prior commit `b59e84e`) — no leftover copy in `weave/`.
+- [x] `git init`'d at the new location as its own repository, independent history from `weave/`.
+- [x] Reworked `data.py`: INR pricing (₹), Indian product catalog (Tarang AirBook 14" Laptop, Tarang Buds Pro Earbuds, Tarang Resonance Headphones, Tarang Vista 32" Monitor), Indian customer names (Priya Sharma, Arjun Mehta, Kavya Reddy), Indian addresses (city/state/PIN code), `+91` phone format.
+- [x] Added GST fields to internal-only order data (GSTIN, HSN code, CGST/SGST/IGST breakdown, mixing intra-state and inter-state examples).
+- [x] Reworked `api.py`: same external/internal route shape (3 external: order status, product info, warranty; 5 internal: customer PII, full order detail incl. GST/cost, inventory, sales analytics, customer-activity analytics) — only the data changed, not the architecture being demonstrated.
+- [x] Reworked `setup_weave.py` as `onboard.py`: renamed to match what it actually is (an onboarding walkthrough, not a one-shot setup script), new business name/persona copy in tool descriptions and bot-profile guardrails, each of the six onboarding steps printed explicitly as it runs. Installs `weave` via a path dependency on a sibling `weave/packages/weave-sdk` (`initialize.sh`, `WEAVE_REPO` env var, documented in `README.md`).
+- [x] Updated `tests/test_api.py` for the new data (14 tests, same assertions reworked for new fixture values, all passing).
+- [x] Live-verified: real `core` (containerized) + `mcp-gateway` + this project's own `api.py` (all already running), `onboard.py` run from `tarang-electronics/` registered 8 tools + 2 bot profiles against a fresh tenant, and `weave/orchestrator/dev_cli.py` (run against the `internal`/`slack` profile — `owner` isn't in `external`'s `roles_allowed`, correctly rejected with `FAILED_PRECONDITION` first) got a real streamed answer sourced from a live tool call: "The shipping status of ORD-1001 is 'shipped', and the estimated delivery date is September 8, 2026" — matching `data.py` exactly.
 
-### Demo 2 — Finance/accounting firm (new, external project from the start)
+### Demo 2 — Finance/accounting firm (new, external project from the start) ✅
 
-- [ ] New sibling project (proposed name: **Suvidha FinServe** — "Suvidha" = "convenience/facility" in Hindi; fictional), own git repo from the start. A firm offering bookkeeping, GST filing, invoicing, and payroll services to Indian small/medium businesses — its "customers" are other businesses, not individual consumers, a deliberately different shape from the e-commerce demo's retail-to-consumer model.
-- [ ] Realistic canned dataset: a handful of fictional Indian client companies, invoices, GST return filings (period, status, amount), payroll runs, ledger/expense entries.
-- [ ] External tools (visibility="external" — usable by the firm's own clients checking their own account): `check_gst_filing_status`, `get_invoice_status`, `get_payroll_run_status`.
-- [ ] Internal tools (visibility="internal" — staff only): `get_client_financials` (P&L-style detail), `get_ledger_entries`, `get_client_contact_details` (PII); analytics (category="analytics"): `get_revenue_report`, `get_client_retention_report`.
-- [ ] `setup_weave.py`, `initialize.sh`, `pyproject.toml`, `tests/test_api.py` mirroring demo 1's structure exactly (same proven pattern, independently instantiated — no shared module between the two demos, no shared code with `weave/` beyond the SDK dependency itself).
-- [ ] Live-verify the same way as demo 1, independently.
+- [x] New sibling project `y:\YY\Yuvraj-Dev\suvidha-finserve` — **Suvidha FinServe** ("Suvidha" = "convenience/facility" in Hindi; fictional), own git repo from the start. A firm offering bookkeeping, GST filing, invoicing, and payroll services to Indian small/medium businesses — its "customers" are other businesses, not individual consumers, a deliberately different (B2B) shape from the e-commerce demo's retail-to-consumer model.
+- [x] Realistic canned dataset: 3 fictional Indian client companies (Meridian Textiles, Kaveri Foods, Bhavani Logistics), invoices, GST return filings (period, status, amount), payroll runs, ledger/expense entries.
+- [x] External tools (visibility="external"): `check_gst_filing_status`, `get_invoice_status`, `get_payroll_run_status`.
+- [x] Internal tools (visibility="internal"): `get_client_financials` (P&L-style detail), `get_ledger_entries`, `get_client_contact_details` (PII); analytics (category="analytics"): `get_revenue_report`, `get_client_retention_report`.
+- [x] `onboard.py`, `initialize.sh`, `pyproject.toml`, `tests/test_api.py` mirroring demo 1's structure exactly (15 tests, all passing; no shared module between the two demos, no shared code with `weave/` beyond the SDK dependency itself).
+- [x] Live-verified the same way as demo 1, independently: `onboard.py` registered 8 tools + 2 bot profiles against a fresh tenant, and `dev_cli.py` against the `internal` profile got a real streamed answer: "The amount of invoice INV-2003 is ₹63,750.00, and its payment status is overdue. The due date for this invoice is 25th July 2026" — matching `data.py` exactly.
 
 ### Realistic end-to-end onboarding flow
 
@@ -281,19 +281,24 @@ Both projects' setup scripts model the **actual sequence a real business goes th
 2. **Authenticate**: `Login` → JWT, exactly as any caller (SDK, `web/`, or a hand-rolled integration) would.
 3. **Describe the business's systems**: `weave.connect()` + repeated `add_tool()` calls, each with a real `visibility`/`category` decision made deliberately (which of the business's own endpoints are customer-safe vs. staff-only, which are analytics) — not defaults left unset.
 4. **Shape the bots**: `create_bot_profile()` for each distinct audience (e.g. one external/customer-facing profile with guardrails, one internal/staff profile) — the point where the business decides what each bot can see and say.
-5. **Connect a channel**: the missing step, not yet built anywhere — today nothing actually receives traffic on `web-widget`/`slack`/etc. for these demo tenants; a real tenant would embed the `web/` chat widget on their own site or wire up a Slack app pointed at their `bot_profile`'s channel. Tracked as a real gap for this phase to either close (a minimal embeddable widget or documented Slack wiring) or explicitly scope out with a one-line reason if it's deferred — not silently absent.
-6. **Go live**: end users (the business's own customers or staff) interact through that channel; this is the point every earlier phase's live verification scripts stood in for.
+5. **Connect a channel**: **deliberately scoped out, explicitly rather than silently.** Today nothing actually receives traffic on `web-widget`/`slack`/etc. for these demo tenants; a real tenant would embed the `web/` chat widget on their own site or wire up a Slack app pointed at their `bot_profile`'s channel. Both projects' `onboard.py` prints this gap out loud as its own step (not skipped) rather than building a channel integration for a fictional tenant that has nowhere real to receive traffic — building one would be demo-only scaffolding, not a reusable pattern. A minimal embeddable widget or documented Slack wiring remains real future work, tracked in Phase 4+, not fabricated here to make the walkthrough look more complete than it is.
+6. **Go live**: end users (the business's own customers or staff) interact through that channel; this is the point every earlier phase's live verification scripts stood in for. Both demo projects' READMEs document running `weave/orchestrator/dev_cli.py` directly against the onboarded tenant as the stand-in verification for this step.
 
-Each demo project's `setup_weave.py` (or a renamed equivalent — `onboard.py` more accurately describes what step 1–4 actually is) should print/log each stage clearly enough that reading its output *is* the tutorial, and its own README should walk through the same six steps in prose, pointing at the exact lines of code doing each one.
+Each demo project's `onboard.py` (renamed from `setup_weave.py` — this name more accurately describes what it actually is) prints each stage clearly enough that reading its output *is* the tutorial, and its own README walks through the same six steps in prose, pointing at the exact lines of code doing each one.
 
 ### Cross-cutting
 
-- [ ] Both projects' module docstrings/READMEs framed explicitly as "read this to learn how to integrate `weave`" — not just working code, but legible reference material (per the user's stated goal: "anyone who wants to use weave can know how to use it and what to expect").
-- [ ] This repo's own docs updated to reflect the corrected shape: `docs/architecture/ARCHITECTURE.md`/`OVERVIEW.md` should note that demo tenants are external reference projects entirely outside `weave/`, point to where they live, and **not embed their code or business-specific detail here** — same discipline already applied to real tenant MCP servers.
-- [ ] `PLAN.md` definition-of-done entries for both, following this phase's own template once built — recorded here since this *is* Weave's own build log, even though the demo code itself lives elsewhere.
-- [ ] Commit in separate logical chunks: the `weave` repo's side (removing `connectors/demo-acme-electronics`, doc updates) as one commit; each external project gets its own independent commit history in its own repo.
+- [x] Both projects' module docstrings/READMEs framed explicitly as "read this to learn how to integrate `weave`" — not just working code, but legible reference material (per the user's stated goal: "anyone who wants to use weave can know how to use it and what to expect").
+- [x] This repo's own docs updated to reflect the corrected shape: `docs/architecture/ARCHITECTURE.md` §1's service table gets a new row for external demo tenant reference projects; `OVERVIEW.md` §6 notes demo tenants live outside `weave/` entirely and names both projects — neither doc embeds their code or business-specific detail, same discipline already applied to real tenant MCP servers.
+- [x] `PLAN.md` definition-of-done entries for both, recorded above.
+- [x] Committed in separate logical chunks: the `weave` repo's side (this doc update, `ARCHITECTURE.md`/`OVERVIEW.md`) as one commit; each external project has its own independent commit history in its own repo (`tarang-electronics`, `suvidha-finserve`).
 
-**Not started** — this section is the plan only, per explicit instruction ("first make plan doc"). Implementation begins on confirmation.
+**Definition of done**: ✅ **met.** Both projects live as independent sibling git repos to `weave/`, install the `weave` SDK as a path dependency exactly as a real pre-release integrator would, and were live-verified end-to-end against this repo's real running stack (`core` + `mcp-gateway` + each project's own API): `onboard.py` registered each project's 8 tools (3 external, 5 internal, matching their respective visibility/category decisions) and 2 bot profiles against a fresh tenant, and `weave/orchestrator/dev_cli.py` — exercising the exact `ChatStream` RPC a real channel integration would call — got real, data-correct streamed answers sourced from live tool calls for both (Tarang's order-tracking, Suvidha's invoice-status, INR/₹ formatting intact). Confirmed the existing RBAC behavior holds for these new tenants too: an `owner`-role token is correctly rejected (`FAILED_PRECONDITION`) against the `external`/`customer`-only profile, same as Phase 3.8's finding, not a regression introduced by this phase.
+
+**Notes**:
+- **A real, honest quirk found in live verification, not a bug in either demo project**: on the first phrasing of some questions, the local `llama3.2:3b` model occasionally ignored the tool result already in context and answered evasively ("I don't have access to real-time data...") despite the tool having been called and returned correct data — visible in the `[tool used: ...]` log line either way. A more direct rephrasing of the same question got the correct, data-grounded answer both times this happened. This is a small-local-model behavior, not a defect in tool assembly, `mcp-gateway`, or either demo project's own code — the tool call and its result were correct in every case; only whether the model *used* the result varied.
+- **A pre-existing cosmetic bug in `weave/orchestrator/dev_cli.py`, found but not fixed here** (out of this phase's scope — it's `weave/`'s own file, not either demo project's): printing a streamed token containing `₹` crashes with `UnicodeEncodeError` on a Windows console using the `cp1252` codepage, since `dev_cli.py` doesn't set an explicit output encoding. Worked around during verification with `PYTHONIOENCODING=utf-8`. Worth a one-line fix in `orchestrator/dev_cli.py` (e.g. wrapping stdout or setting `PYTHONIOENCODING` in the script itself) the next time that file is touched, now that a real demo tenant's data includes a non-ASCII currency symbol.
+- Both demo projects' `git init` histories start with one commit each — deliberately not split further, since each is a from-scratch (Suvidha) or wholesale-rework (Tarang) initial state, not an incremental change to something pre-existing in that repo.
 
 ---
 

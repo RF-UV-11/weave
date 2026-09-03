@@ -12,6 +12,7 @@ Companion to `OVERVIEW.md` (the what/why) and `SECURITY.md` (the trust model). T
 | `orchestrator` | Python | Chat gRPC server (streaming), LangGraph planner + specialist agents, MCP client, dynamic tool assembly, RAG pipeline, memory assembly | Never holds a database connection — every read/write goes through `core` |
 | `compute` | Python | Platform-generic compute modules (RAG reranking, faithfulness scoring) reached via routes on one server | Never hosts tenant-specific business logic — that belongs in a tenant's own connector |
 | `connectors` (repo folder) | mixed | Reference/example MCP servers, connector scaffolding templates | Not deployed as part of the platform itself — these are examples and starter kits for tenants |
+| *(external)* demo tenant reference projects | mixed | Fully worked examples of integrating the `weave` SDK, one per demo tenant | Never live in this repo, even under `connectors/` — a tenant's integration code belongs in the tenant's own codebase, same rule as any other tenant-owned MCP server. Currently: `tarang-electronics` (B2C retail) and `suvidha-finserve` (B2B professional services), sibling directories to `weave/`, each its own git repo. |
 | `channels` | mixed | Thin per-channel translation to/from the chat API | Never contains business logic, tool definitions, or tenant awareness beyond resolving `tenant_id` |
 | `web` | TypeScript | Onboarding dashboard, connector management UI, admin console, chat UI, embeddable widget | Never talks to a database directly — grpc-web through Envoy to `orchestrator`/`core` |
 
