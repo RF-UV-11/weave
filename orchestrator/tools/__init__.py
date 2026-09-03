@@ -1,3 +1,3 @@
-from .assembly import AssembledTool, ToolAssemblyError, assemble_tools
+from .assembly import AssembledTool, AssemblyResult, ToolAssemblyError, assemble_tools
 
-__all__ = ["AssembledTool", "ToolAssemblyError", "assemble_tools"]
+__all__ = ["AssembledTool", "AssemblyResult", "ToolAssemblyError", "assemble_tools"]

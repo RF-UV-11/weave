@@ -8,7 +8,7 @@ from mcp_client.client import McpTool
 from tools.assembly import ToolAssemblyError, assemble_tools
 
 
-def make_core(*, profile_roles_allowed, profile_connector_ids, connectors):
+def make_core(*, profile_roles_allowed, profile_connector_ids, connectors, visibility="internal", guardrails=None):
     core = SimpleNamespace()
     core.bot_profile = SimpleNamespace(
         GetActiveBotProfile=AsyncMock(
@@ -17,6 +17,8 @@ def make_core(*, profile_roles_allowed, profile_connector_ids, connectors):
                     name="external",
                     roles_allowed=profile_roles_allowed,
                     connector_ids=profile_connector_ids,
+                    visibility=visibility,
+                    guardrails=guardrails or [],
                 )
             )
         )
@@ -38,7 +40,7 @@ async def test_rejects_role_not_in_profiles_allowed(monkeypatch):
 async def test_allows_role_in_profiles_allowed(monkeypatch):
     core = make_core(profile_roles_allowed=[4], profile_connector_ids=[], connectors=[])
     result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
-    assert result == []
+    assert result.tools == []
 
 
 async def test_only_fetches_tools_for_profiles_connectors(monkeypatch):
@@ -55,9 +57,9 @@ async def test_only_fetches_tools_for_profiles_connectors(monkeypatch):
     monkeypatch.setattr(assembly_module, "list_tools", fake_list_tools)
 
     result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
-    assert len(result) == 1
-    assert result[0].connector_name == "booking-mcp"
-    assert result[0].tool.name == "book_appointment"
+    assert len(result.tools) == 1
+    assert result.tools[0].connector_name == "booking-mcp"
+    assert result.tools[0].tool.name == "book_appointment"
 
 
 async def test_still_tries_a_connector_core_has_not_marked_active(monkeypatch):
@@ -77,8 +79,8 @@ async def test_still_tries_a_connector_core_has_not_marked_active(monkeypatch):
     monkeypatch.setattr(assembly_module, "list_tools", fake_list_tools)
 
     result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
-    assert len(result) == 1
-    assert result[0].tool.name == "ping"
+    assert len(result.tools) == 1
+    assert result.tools[0].tool.name == "ping"
 
 
 async def test_drops_unreachable_connector_without_failing_the_whole_request(monkeypatch):
@@ -94,4 +96,23 @@ async def test_drops_unreachable_connector_without_failing_the_whole_request(mon
     monkeypatch.setattr(assembly_module, "list_tools", failing_list_tools)
 
     result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
-    assert result == []
+    assert result.tools == []
+
+
+async def test_guardrails_active_only_when_external_with_rules():
+    core = make_core(profile_roles_allowed=[4], profile_connector_ids=[], connectors=[], visibility="external", guardrails=["rule"])
+    result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
+    assert result.guardrails_active is True
+    assert result.guardrails == ["rule"]
+
+
+async def test_guardrails_inactive_for_internal_profile_even_with_rules():
+    core = make_core(profile_roles_allowed=[4], profile_connector_ids=[], connectors=[], visibility="internal", guardrails=["rule"])
+    result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
+    assert result.guardrails_active is False
+
+
+async def test_guardrails_inactive_for_external_profile_with_no_rules():
+    core = make_core(profile_roles_allowed=[4], profile_connector_ids=[], connectors=[], visibility="external", guardrails=[])
+    result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
+    assert result.guardrails_active is False

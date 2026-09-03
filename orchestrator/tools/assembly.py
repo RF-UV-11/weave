@@ -39,6 +39,22 @@ class AssembledTool:
     tool: McpTool
 
 
+@dataclass
+class AssemblyResult:
+    tools: list[AssembledTool]
+    profile_name: str
+    visibility: str
+    guardrails: list[str]
+
+    @property
+    def guardrails_active(self) -> bool:
+        """External profiles with at least one guardrail rule get
+        buffered-answer screening (server/guardrails.py) instead of real
+        token streaming — see BotProfile.visibility's doc comment for why
+        this isn't applied to every profile."""
+        return self.visibility == "external" and bool(self.guardrails)
+
+
 async def assemble_tools(
     core: CoreClient,
     *,
@@ -46,7 +62,7 @@ async def assemble_tools(
     channel: str,
     role: str,
     token: str,
-) -> list[AssembledTool]:
+) -> AssemblyResult:
     metadata = bearer_metadata(token)
 
     try:
@@ -94,4 +110,9 @@ async def assemble_tools(
                     tool=tool,
                 )
             )
-    return assembled
+    return AssemblyResult(
+        tools=assembled,
+        profile_name=profile.name,
+        visibility=profile.visibility or "internal",
+        guardrails=list(profile.guardrails),
+    )
