@@ -53,6 +53,7 @@ docs/           Architecture and security documentation
 
 ## Documentation
 
+- [`docs/WEAVE_FROM_SCRATCH.md`](docs/WEAVE_FROM_SCRATCH.md) — **the full-depth read**: the idea and the need, why not the alternatives, every architectural decision and what was rejected, the security model, and a topic-by-topic curriculum for building the whole system from scratch
 - [`OVERVIEW.md`](OVERVIEW.md) — what Weave is, the core mechanic, tech stack, repo structure
 - [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) — system architecture, request lifecycle, data model, dynamic tool assembly (bulk/spec-driven registration, per-profile persona/LLM-provider, per-tool end-user auth)
 - [`docs/architecture/SECURITY.md`](docs/architecture/SECURITY.md) — trust boundaries, tenant isolation, credential handling, connector security
