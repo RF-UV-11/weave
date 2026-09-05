@@ -31,6 +31,29 @@ EMBED_MODEL = os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 _client = ollama.AsyncClient(host=HOST)
 
 
+def _prepare_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Translates chat_service.py's internal `image_attachments` key
+    (attachments/process.py's ImageAttachment list, provider-agnostic)
+    into Ollama's own message shape — a per-message `images` list of raw
+    base64 strings, no data-URI prefix (openai_compat_client.py's
+    equivalent conversion looks different because OpenAI's wire format
+    for image input differs). Messages without `image_attachments` pass
+    through unchanged; this only copies the messages that need
+    translating, so callers with no attachments pay nothing extra."""
+    if not any("image_attachments" in m for m in messages):
+        return messages
+    prepared = []
+    for m in messages:
+        images = m.get("image_attachments")
+        if not images:
+            prepared.append(m)
+            continue
+        m = {k: v for k, v in m.items() if k != "image_attachments"}
+        m["images"] = [img.data_b64 for img in images]
+        prepared.append(m)
+    return prepared
+
+
 def _to_ollama_tool(name: str, description: str, input_schema: dict[str, Any]) -> dict[str, Any]:
     """Converts an MCP tool (name/description/JSON-schema) into the
     OpenAI-style function-calling shape Ollama expects."""
@@ -58,7 +81,7 @@ async def chat(
     how a bot profile's own `llm_model` (BotProfile.llm_model) takes
     effect, falling back to the module default when unset (`""`/`None`)."""
     ollama_tools = [_to_ollama_tool(n, d, s) for n, d, s in (tools or [])]
-    resp = await _client.chat(model=model or MODEL, messages=messages, tools=ollama_tools or None)
+    resp = await _client.chat(model=model or MODEL, messages=_prepare_messages(messages), tools=ollama_tools or None)
     calls = [ToolCall(name=tc.function.name, arguments=dict(tc.function.arguments or {})) for tc in (resp.message.tool_calls or [])]
     return ChatResult(content=resp.message.content or "", tool_calls=calls)
 
@@ -67,7 +90,7 @@ async def chat_stream(messages: list[dict[str, str]], *, model: str | None = Non
     """Streams the final answer token-by-token — no tools offered here,
     this is only ever the synthesis step after any tool call is resolved.
     model overrides MODEL for this call, same convention as chat() above."""
-    async for chunk in await _client.chat(model=model or MODEL, messages=messages, stream=True):
+    async for chunk in await _client.chat(model=model or MODEL, messages=_prepare_messages(messages), stream=True):
         if chunk.message.content:
             yield chunk.message.content
 

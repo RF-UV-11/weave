@@ -31,6 +31,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 _ORCH_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(_ORCH_DIR))
@@ -45,6 +46,7 @@ import grpc  # noqa: E402
 from gen.orchestrator.v1 import chat_pb2, chat_pb2_grpc  # noqa: E402
 from weave_shared_clients import CoreClient  # noqa: E402
 
+from attachments import process_attachments  # noqa: E402
 from llm.router import get_provider  # noqa: E402
 from server.auth import InvalidTokenError, bearer_token_from_metadata, mint_user_assertion, verify_access_token  # noqa: E402
 from server.graph import run_turn  # noqa: E402
@@ -160,14 +162,29 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
 
         system_prompt = _build_system_prompt(assembly.persona, relevant_facts)
 
+        # Attachments (protos/orchestrator/v1/chat.proto's Attachment) are
+        # processed once per turn, here: an image rides along as vision
+        # input on the user message below; a PDF/audio/video attachment is
+        # reduced to extracted/transcribed text appended to that same
+        # message instead — see attachments/process.py for why the two
+        # paths differ. Every downstream step (tool-decision, synthesis,
+        # session persistence) only ever sees the resulting message list,
+        # never the raw Attachment objects.
+        processed = await process_attachments(list(request.attachments))
+        user_text = f"{request.message}\n\n{processed.text_note}".strip() if processed.text_note else request.message
+        user_message: dict[str, Any] = {"role": "user", "content": user_text}
+        if processed.images:
+            user_message["image_attachments"] = processed.images
+
         messages = [
             {"role": "system", "content": system_prompt},
             *prior_messages,
-            {"role": "user", "content": request.message},
+            user_message,
         ]
 
         logger.info(
-            "tenant=%s channel=%s profile=%s visibility=%s route=%s tools_available=%d prior_messages=%d message=%r",
+            "tenant=%s channel=%s profile=%s visibility=%s route=%s tools_available=%d prior_messages=%d "
+            "attachments=%d message=%r",
             claims.tenant_id,
             request.channel,
             assembly.profile_name,
@@ -175,6 +192,7 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
             route,
             len(chosen_tools),
             len(prior_messages),
+            len(request.attachments),
             request.message,
         )
 
@@ -203,7 +221,7 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
 
         if assembly.guardrails_active:
             async for resp in self._guarded_response(
-                state, assembly.guardrails, session_id, claims.tenant_id, claims.user_id, token, request.message,
+                state, assembly.guardrails, session_id, claims.tenant_id, claims.user_id, token, user_text,
                 provider, model,
             ):
                 yield resp
@@ -225,12 +243,12 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
             tenant_id=claims.tenant_id,
             session_id=session_id,
             token=token,
-            user_message=request.message,
+            user_message=user_text,
             assistant_message="".join(full_text_parts),
             tool_used=state["tool_used"],
             connector_used=state["connector_used"],
         )
-        await remember(self._core, tenant_id=claims.tenant_id, user_id=claims.user_id, token=token, text=request.message)
+        await remember(self._core, tenant_id=claims.tenant_id, user_id=claims.user_id, token=token, text=user_text)
 
         yield chat_pb2.ChatStreamResponse(
             token="",

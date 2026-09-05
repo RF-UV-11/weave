@@ -66,6 +66,24 @@ class WeaveClient:
         self._tenant_id = tenant_id
         self._token = token
 
+    @property
+    def tenant_id(self) -> str:
+        return self._tenant_id
+
+    @property
+    def access_token(self) -> str:
+        """The JWT this client authenticated with — the same shape and
+        signing key core's ChatService.ChatStream RPC (protos/
+        orchestrator/v1/chat.proto) expects as an `authorization: Bearer
+        <token>` gRPC metadata entry. Exposed for a caller building its
+        own channel (a real chat surface talking to orchestrator
+        directly, not through this SDK — see _core_client.py's docstring
+        for why this SDK itself never calls chat/ChatStream): it still
+        needs *some* way to reuse the identity this client already
+        established, rather than re-implementing sign_up/connect's
+        Login call a second time just to get a token."""
+        return self._token
+
     async def add_tool(
         self,
         *,
@@ -391,6 +409,15 @@ class SyncWeaveClient:
 
     def _run(self, coro):
         return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
+
+    @property
+    def tenant_id(self) -> str:
+        return self._async_client.tenant_id
+
+    @property
+    def access_token(self) -> str:
+        """See WeaveClient.access_token."""
+        return self._async_client.access_token
 
     def add_tool(self, **kwargs: Any) -> RegisteredTool:
         return self._run(self._async_client.add_tool(**kwargs))

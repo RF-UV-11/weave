@@ -2,7 +2,9 @@ import json
 
 import httpx
 
+from attachments.process import ImageAttachment
 from llm import openai_compat_client as client_module
+from llm.openai_compat_client import _prepare_messages
 
 
 def transport_for(handler):
@@ -148,3 +150,50 @@ async def test_chat_stream_skips_deltas_with_no_content():
         c async for c in client_module.chat_stream([{"role": "user", "content": "hi"}], transport=transport_for(handler))
     ]
     assert chunks == []
+
+
+def test_prepare_messages_passes_through_without_image_attachments():
+    messages = [{"role": "user", "content": "hi"}]
+    assert _prepare_messages(messages) is messages
+
+
+def test_prepare_messages_converts_image_attachments_to_content_parts():
+    messages = [
+        {
+            "role": "user",
+            "content": "what's in this photo?",
+            "image_attachments": [ImageAttachment(mime_type="image/jpeg", data_b64="ZmFrZQ==")],
+        }
+    ]
+
+    prepared = _prepare_messages(messages)
+
+    assert prepared == [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "what's in this photo?"},
+                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,ZmFrZQ=="}},
+            ],
+        }
+    ]
+
+
+async def test_chat_sends_openai_shaped_content_parts_for_images():
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["messages"] == [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "describe this"},
+                    {"type": "image_url", "image_url": {"url": "data:image/png;base64,ZmFrZQ=="}},
+                ],
+            }
+        ]
+        return httpx.Response(200, json={"choices": [{"message": {"content": "a cat"}}]})
+
+    await client_module.chat(
+        [{"role": "user", "content": "describe this", "image_attachments": [ImageAttachment("image/png", "ZmFrZQ==")]}],
+        transport=transport_for(handler),
+    )

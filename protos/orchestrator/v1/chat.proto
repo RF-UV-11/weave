@@ -4,6 +4,27 @@ package orchestrator.v1;
 
 option go_package = "weave/core/gen/orchestrator/v1;orchestratorv1";
 
+// One piece of non-text input attached to a turn (image/audio/video/PDF).
+// orchestrator never stores these — each is processed once, inline,
+// during that turn's ChatStream call (orchestrator/attachments/process.py)
+// and discarded: an image's bytes are forwarded to a vision-capable model
+// for that turn only, everything else (PDF, audio, video) is reduced to
+// extracted/transcribed text appended to the turn's message before either
+// touches the model's context. A large upload is the caller's problem to
+// size-limit before sending, same as any other unary gRPC field.
+message Attachment {
+  bytes data = 1;
+  // IANA media type, e.g. "image/jpeg", "application/pdf", "audio/ogg",
+  // "video/mp4" — selects which branch of attachments/process.py handles
+  // this attachment; an unrecognized type is dropped with a warning
+  // rather than failing the whole turn.
+  string mime_type = 2;
+  // Original filename, if any — carried through into the extracted-text
+  // note for multi-attachment turns ("[Attached: statement.pdf]") so the
+  // model can refer to a specific attachment when more than one was sent.
+  string filename = 3;
+}
+
 message ChatStreamRequest {
   string channel = 1;
   string message = 2;
@@ -13,6 +34,10 @@ message ChatStreamRequest {
   // in ChatStreamResponse.session_id for the caller to send on the next
   // turn.
   string session_id = 3;
+  // Optional non-text input for this turn — see Attachment above. Empty
+  // for a plain text turn, which is every turn today; existing callers
+  // need no changes.
+  repeated Attachment attachments = 4;
 }
 
 message ChatStreamResponse {

@@ -2,7 +2,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import llm.ollama_client as ollama_client_module
-from llm.ollama_client import _to_ollama_tool, embed
+from attachments.process import ImageAttachment
+from llm.ollama_client import _prepare_messages, _to_ollama_tool, embed
 
 
 def test_to_ollama_tool_shape():
@@ -65,3 +66,42 @@ async def test_chat_stream_model_override_takes_precedence(monkeypatch):
     chunks = [c async for c in ollama_client_module.chat_stream([{"role": "user", "content": "hi"}], model="llama3.2:1b")]
 
     assert chunks == ["hi"]
+
+
+def test_prepare_messages_passes_through_without_image_attachments():
+    messages = [{"role": "user", "content": "hi"}]
+    assert _prepare_messages(messages) is messages
+
+
+def test_prepare_messages_converts_image_attachments_to_ollama_images():
+    messages = [
+        {"role": "system", "content": "be helpful"},
+        {
+            "role": "user",
+            "content": "what's in this photo?",
+            "image_attachments": [ImageAttachment(mime_type="image/jpeg", data_b64="ZmFrZQ==")],
+        },
+    ]
+
+    prepared = _prepare_messages(messages)
+
+    assert prepared[0] == {"role": "system", "content": "be helpful"}
+    assert prepared[1] == {
+        "role": "user",
+        "content": "what's in this photo?",
+        "images": ["ZmFrZQ=="],
+    }
+    assert "image_attachments" not in prepared[1]
+
+
+async def test_chat_forwards_ollama_shaped_images(monkeypatch):
+    fake_message = SimpleNamespace(content="a cat", tool_calls=None)
+    fake_chat = AsyncMock(return_value=SimpleNamespace(message=fake_message))
+    monkeypatch.setattr(ollama_client_module._client, "chat", fake_chat)
+
+    await ollama_client_module.chat(
+        [{"role": "user", "content": "what's this?", "image_attachments": [ImageAttachment("image/png", "ZmFrZQ==")]}]
+    )
+
+    sent_messages = fake_chat.call_args.kwargs["messages"]
+    assert sent_messages == [{"role": "user", "content": "what's this?", "images": ["ZmFrZQ=="]}]

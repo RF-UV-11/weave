@@ -43,6 +43,33 @@ def _headers() -> dict[str, str]:
     return headers
 
 
+def _prepare_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Translates chat_service.py's internal `image_attachments` key
+    (attachments/process.py's ImageAttachment list, provider-agnostic)
+    into the OpenAI chat-completions multi-part content shape — a message
+    whose `content` is a list of `{"type": "text", ...}` /
+    `{"type": "image_url", ...}` parts rather than a plain string
+    (ollama_client.py's equivalent conversion looks different because
+    Ollama's own wire format for image input differs: a per-message
+    `images` list of raw base64, not content parts). Messages without
+    `image_attachments` pass through unchanged."""
+    if not any("image_attachments" in m for m in messages):
+        return messages
+    prepared = []
+    for m in messages:
+        images = m.get("image_attachments")
+        if not images:
+            prepared.append(m)
+            continue
+        parts: list[dict[str, Any]] = [{"type": "text", "text": m.get("content", "")}]
+        parts.extend(
+            {"type": "image_url", "image_url": {"url": f"data:{img.mime_type};base64,{img.data_b64}"}}
+            for img in images
+        )
+        prepared.append({**{k: v for k, v in m.items() if k not in ("content", "image_attachments")}, "content": parts})
+    return prepared
+
+
 def _to_openai_tool(name: str, description: str, input_schema: dict[str, Any]) -> dict[str, Any]:
     """Same function-calling shape ollama_client._to_ollama_tool builds —
     Ollama's own tool schema is already OpenAI-compatible, so this is
@@ -85,7 +112,7 @@ async def chat(
     optionally offering tools, model overriding MODEL for this call.
     transport is test-only (httpx.MockTransport), same pattern as
     server/web_search.py's run_web_search — never passed in production."""
-    payload: dict[str, Any] = {"model": model or MODEL, "messages": messages}
+    payload: dict[str, Any] = {"model": model or MODEL, "messages": _prepare_messages(messages)}
     if tools:
         payload["tools"] = [_to_openai_tool(n, d, s) for n, d, s in tools]
 
@@ -102,7 +129,7 @@ async def chat_stream(
     """Same contract as ollama_client.chat_stream(): streams the final
     answer token-by-token, no tools offered (synthesis-only step).
     transport is test-only, same as chat() above."""
-    payload = {"model": model or MODEL, "messages": messages, "stream": True}
+    payload = {"model": model or MODEL, "messages": _prepare_messages(messages), "stream": True}
     async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS, transport=transport) as client:
         async with client.stream("POST", f"{BASE_URL}/chat/completions", json=payload, headers=_headers()) as resp:
             resp.raise_for_status()

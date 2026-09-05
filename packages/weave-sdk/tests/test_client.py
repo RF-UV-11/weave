@@ -256,6 +256,8 @@ async def test_connect_async_logs_in_and_returns_client(monkeypatch):
 
     assert isinstance(client, WeaveClient)
     assert client._token == "tok_from_login"
+    assert client.access_token == "tok_from_login"
+    assert client.tenant_id == "tnt_1"
     fake_core.auth.Login.assert_awaited_once()
 
 
@@ -287,6 +289,9 @@ def test_sync_connect_add_tool_and_close(monkeypatch):
 
     client: SyncWeaveClient = connect(tenant_id="tnt_1", email="owner@x.test", password="hunter2hunter2")
     try:
+        assert client.tenant_id == "tnt_1"
+        assert client.access_token == "tok_sync"
+
         tool = client.add_tool(name="x", description="does x", endpoint="https://x")
         assert tool.name == "get_status"  # from fake_registered_tool()'s default
 
