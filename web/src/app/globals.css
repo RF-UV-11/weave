@@ -8,8 +8,8 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-heading: var(--font-heading);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -39,6 +39,17 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* Weave's two-thread identity (DESIGN.md §2/§4) — reasoning (cool) vs the
+     tenant's own system (warm). Named directly, not just aliased through
+     `primary`, so any surface can reach for `bg-cool`/`text-warm`/etc. on
+     purpose, same way DESIGN.md treats the split as meaningful, not just
+     a brand-color choice. */
+  --color-cool: var(--thread-cool);
+  --color-cool-foreground: var(--thread-cool-foreground);
+  --color-warm: var(--thread-warm);
+  --color-warm-foreground: var(--thread-warm-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -48,73 +59,64 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
+/* Dark-mode-first, no light-only screen anywhere (DESIGN.md §2) — :root
+   and .dark carry identical values so there's no flash of a different
+   theme before next-themes' class lands, and no light variant to keep in
+   sync since none is planned. */
+:root,
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #0b0d14;
+  --foreground: #e6e8f0;
+  --card: #12151f;
+  --card-foreground: #e6e8f0;
+  --popover: #1a1e2b;
+  --popover-foreground: #e6e8f0;
+  --primary: #7b6cff;
+  --primary-foreground: #f5f4ff;
+  --secondary: #1a1e2b;
+  --secondary-foreground: #e6e8f0;
+  --muted: #171b26;
+  --muted-foreground: #9aa0b4;
+  --accent: #1f2333;
+  --accent-foreground: #e6e8f0;
+  --destructive: #ff6b6b;
+  --border: #242938;
+  --input: #242938;
+  --ring: #7b6cff;
+  --chart-1: #7b6cff;
+  --chart-2: #ffb86b;
+  --chart-3: #3ddc97;
+  --chart-4: #a394ff;
+  --chart-5: #f5b942;
+  --sidebar: #0e111a;
+  --sidebar-foreground: #e6e8f0;
+  --sidebar-primary: #7b6cff;
+  --sidebar-primary-foreground: #f5f4ff;
+  --sidebar-accent: #1a1e2b;
+  --sidebar-accent-foreground: #e6e8f0;
+  --sidebar-border: #242938;
+  --sidebar-ring: #7b6cff;
+  --radius: 0.85rem;
+
+  --thread-cool: #7b6cff;
+  --thread-cool-foreground: #f5f4ff;
+  --thread-warm: #ffb86b;
+  --thread-warm-foreground: #241705;
+  --success: #3ddc97;
+  --warning: #f5b942;
+
+  /* Glow shadows — a tinted, layered shadow rather than a flat black
+     drop-shadow, so elevated surfaces read as *lit from the accent*, not
+     just raised. Used sparingly (primary actions, active cards, the
+     Weave Line) — everything glowing at once reads as noise, not depth. */
+  --shadow-glow-cool: 0 0 0 1px color-mix(in oklch, var(--thread-cool) 40%, transparent),
+    0 8px 24px -8px color-mix(in oklch, var(--thread-cool) 55%, transparent),
+    0 2px 8px -2px color-mix(in oklch, var(--thread-cool) 35%, transparent);
+  --shadow-glow-warm: 0 0 0 1px color-mix(in oklch, var(--thread-warm) 40%, transparent),
+    0 8px 24px -8px color-mix(in oklch, var(--thread-warm) 55%, transparent),
+    0 2px 8px -2px color-mix(in oklch, var(--thread-warm) 35%, transparent);
+  --shadow-elevated: 0 1px 0 0 color-mix(in oklch, white 6%, transparent) inset,
+    0 12px 32px -12px rgb(0 0 0 / 0.55), 0 4px 12px -4px rgb(0 0 0 / 0.4);
 }
 
 @layer base {
@@ -126,5 +128,88 @@
   }
   html {
     @apply font-sans;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-heading;
+  }
+}
+
+@layer utilities {
+  /* Ambient gradient-mesh backdrop — three soft accent blobs (two cool,
+     one warm, per the two-thread palette) that sit fixed behind content.
+     A `::before` on a positioned wrapper rather than per-page markup, so
+     any screen opts in with one class. */
+  .bg-mesh {
+    position: relative;
+    isolation: isolate;
+  }
+  .bg-mesh::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(40rem 28rem at 12% -8%, color-mix(in oklch, var(--thread-cool) 22%, transparent), transparent 60%),
+      radial-gradient(36rem 26rem at 108% 8%, color-mix(in oklch, var(--thread-warm) 16%, transparent), transparent 60%),
+      radial-gradient(50rem 38rem at 50% 118%, color-mix(in oklch, var(--thread-cool) 14%, transparent), transparent 60%),
+      var(--background);
+  }
+
+  .glass {
+    background: color-mix(in oklch, var(--card) 72%, transparent);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid color-mix(in oklch, white 8%, var(--border));
+  }
+
+  .glow-cool {
+    box-shadow: var(--shadow-glow-cool);
+  }
+  .glow-warm {
+    box-shadow: var(--shadow-glow-warm);
+  }
+  .shadow-elevated {
+    box-shadow: var(--shadow-elevated);
+  }
+
+  .text-gradient {
+    background: linear-gradient(90deg, var(--thread-cool), var(--thread-warm));
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+
+  .shimmer-bg {
+    background: linear-gradient(
+      100deg,
+      transparent 30%,
+      color-mix(in oklch, white 14%, transparent) 50%,
+      transparent 70%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2.2s ease-in-out infinite;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 150% 0;
+  }
+  100% {
+    background-position: -50% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

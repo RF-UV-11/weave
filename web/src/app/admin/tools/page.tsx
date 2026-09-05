@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { create } from "@bufbuild/protobuf";
-import { Loader2, BarChart3 } from "lucide-react";
+import { motion } from "framer-motion";
+import { Loader2, BarChart3, ShieldCheck } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -30,20 +31,20 @@ export default function ToolsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Tools</h1>
+        <h1 className="font-heading text-xl font-semibold tracking-tight">Tools</h1>
         <p className="text-sm text-muted-foreground">
-          Every HTTP API this tenant has registered via the <code className="rounded bg-muted px-1 py-0.5">weave</code>{" "}
+          Every HTTP API this tenant has registered via the <code className="rounded bg-muted px-1 py-0.5 font-mono text-cool">weave</code>{" "}
           SDK, and who can see each one.
         </p>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <Card>
+      <Card className="glass border-0">
         <CardContent className="p-0">
           {tools === null ? (
             <div className="flex justify-center py-10">
-              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+              <Loader2 className="size-5 animate-spin text-cool" />
             </div>
           ) : tools.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted-foreground">
@@ -58,11 +59,19 @@ export default function ToolsPage() {
                   <TableHead>Method</TableHead>
                   <TableHead>Visibility</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead>Auth</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tools.map((t) => (
-                  <TableRow key={t.Id}>
+                {tools.map((t, i) => (
+                  <motion.tr
+                    key={t.Id}
+                    data-slot="table-row"
+                    className="border-b transition-colors hover:bg-muted/50"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: i * 0.03 }}
+                  >
                     <TableCell className="font-medium">{t.name}</TableCell>
                     <TableCell className="max-w-xs truncate text-muted-foreground">{t.description}</TableCell>
                     <TableCell>
@@ -71,19 +80,38 @@ export default function ToolsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={t.visibility === "external" ? "default" : "secondary"}>{t.visibility}</Badge>
+                      <Badge
+                        variant="outline"
+                        className={
+                          t.visibility === "external"
+                            ? "border-warm/40 bg-warm/12 text-warm"
+                            : "border-cool/40 bg-cool/12 text-cool"
+                        }
+                      >
+                        {t.visibility}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       {t.category === "analytics" ? (
                         <span className="inline-flex items-center gap-1 text-sm">
-                          <BarChart3 className="size-3.5 text-primary" />
+                          <BarChart3 className="size-3.5 text-cool" />
                           analytics
                         </span>
                       ) : (
                         <span className="text-sm text-muted-foreground">general</span>
                       )}
                     </TableCell>
-                  </TableRow>
+                    <TableCell>
+                      {t.authMode === "user_token" ? (
+                        <span className="inline-flex items-center gap-1 text-sm text-success">
+                          <ShieldCheck className="size-3.5" />
+                          per-user
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">shared</span>
+                      )}
+                    </TableCell>
+                  </motion.tr>
                 ))}
               </TableBody>
             </Table>
