@@ -20,7 +20,7 @@ const CHANNELS = [
 const SUGGESTIONS = [
   "What's the status of order ORD-1001?",
   "What's the warranty status on order ORD-1001?",
-  "Tell me about the Acme Wave Headphones.",
+  "Tell me about your best-selling product.",
 ];
 
 export default function ChatPage() {

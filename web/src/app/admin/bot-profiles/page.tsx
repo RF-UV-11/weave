@@ -292,7 +292,7 @@ function CreateBotProfileDialog({
             id="bp-persona"
             value={persona}
             onChange={(e) => setPersona(e.target.value)}
-            placeholder="You are Acme's support assistant. Be concise, always cite the order ID you looked up…"
+            placeholder="You are this business's support assistant. Be concise, always cite the order ID you looked up…"
             rows={3}
             className="resize-none"
           />
