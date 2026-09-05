@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { motion } from "framer-motion";
 import { Loader2, LayoutGrid, Bot, Wrench, Plug } from "lucide-react";
 
 import { SiteHeader } from "@/components/site-header";
@@ -39,7 +40,7 @@ export default function AdminLayout({ children }: LayoutProps<"/admin">) {
       <SiteHeader />
       <div className="mx-auto flex w-full max-w-6xl flex-1 gap-8 px-4 py-6">
         <aside className="w-52 shrink-0">
-          <nav className="flex flex-col gap-1">
+          <nav className="relative flex flex-col gap-1">
             {NAV.map(({ href, label, icon: Icon, exact }) => {
               const active = exact ? pathname === href : pathname?.startsWith(href);
               return (
@@ -47,13 +48,20 @@ export default function AdminLayout({ children }: LayoutProps<"/admin">) {
                   key={href}
                   href={href}
                   className={cn(
-                    buttonVariants({ variant: active ? "secondary" : "ghost", size: "sm" }),
-                    "justify-start gap-2",
-                    active && "font-medium"
+                    buttonVariants({ variant: "ghost", size: "sm" }),
+                    "relative justify-start gap-2 hover:bg-transparent",
+                    active ? "font-medium text-foreground" : "text-muted-foreground"
                   )}
                 >
-                  <Icon className="size-4" />
-                  {label}
+                  <Icon className="relative z-10 size-4" />
+                  <span className="relative z-10">{label}</span>
+                  {active && (
+                    <motion.span
+                      layoutId="admin-nav-active-pill"
+                      className="absolute inset-0 rounded-md bg-secondary"
+                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                    />
+                  )}
                 </Link>
               );
             })}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { create } from "@bufbuild/protobuf";
+import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -30,21 +31,21 @@ export default function ConnectorsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Connectors</h1>
+        <h1 className="font-heading text-xl font-semibold tracking-tight">Connectors</h1>
         <p className="text-sm text-muted-foreground">
           Every MCP-reachable endpoint this tenant has registered — hand-rolled MCP servers, or the auto-created{" "}
-          <code className="rounded bg-muted px-1 py-0.5">weave_managed</code> connector every SDK-registered tool
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-cool">weave_managed</code> connector every SDK-registered tool
           lands on.
         </p>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <Card>
+      <Card className="glass border-0">
         <CardContent className="p-0">
           {connectors === null ? (
             <div className="flex justify-center py-10">
-              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+              <Loader2 className="size-5 animate-spin text-cool" />
             </div>
           ) : connectors.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted-foreground">No connectors registered yet.</p>
@@ -59,17 +60,29 @@ export default function ConnectorsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {connectors.map((c) => (
-                  <TableRow key={c.Id}>
+                {connectors.map((c, i) => (
+                  <motion.tr
+                    key={c.Id}
+                    data-slot="table-row"
+                    className="border-b transition-colors hover:bg-muted/50"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: i * 0.03 }}
+                  >
                     <TableCell className="font-medium">{c.name}</TableCell>
                     <TableCell className="text-muted-foreground">{c.transport}</TableCell>
                     <TableCell className="max-w-xs truncate font-mono text-xs text-muted-foreground">
                       {c.endpoint}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={c.status === "active" ? "default" : "secondary"}>{c.status}</Badge>
+                      <Badge
+                        className={c.status === "active" ? "border-success/40 bg-success/12 text-success" : ""}
+                        variant={c.status === "active" ? "outline" : "secondary"}
+                      >
+                        {c.status}
+                      </Badge>
                     </TableCell>
-                  </TableRow>
+                  </motion.tr>
                 ))}
               </TableBody>
             </Table>

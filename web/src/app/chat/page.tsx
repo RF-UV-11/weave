@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { MessageSquarePlus, Send, Sparkles } from "lucide-react";
 
 import { RequireAuth } from "@/components/require-auth";
@@ -53,8 +54,8 @@ function ChatWindow({ token }: { token: string }) {
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4">
       <div className="flex items-center justify-between gap-3 py-4">
         <Select value={channel} onValueChange={(v) => { if (v) { setChannel(v); reset(); } }}>
-          <SelectTrigger className="w-[220px]">
-            <SelectValue />
+          <SelectTrigger className="glass w-[220px] border-0">
+            <SelectValue>{(v: string) => CHANNELS.find((c) => c.value === v)?.label ?? v}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {CHANNELS.map((c) => (
@@ -75,7 +76,11 @@ function ChatWindow({ token }: { token: string }) {
           {messages.length === 0 ? (
             <EmptyState onPick={(text) => send(text)} />
           ) : (
-            messages.map((m) => <ChatMessageBubble key={m.id} message={m} />)
+            <AnimatePresence initial={false}>
+              {messages.map((m) => (
+                <ChatMessageBubble key={m.id} message={m} />
+              ))}
+            </AnimatePresence>
           )}
           <div ref={scrollRef} />
         </div>
@@ -83,18 +88,26 @@ function ChatWindow({ token }: { token: string }) {
 
       {error && <p className="pb-2 text-sm text-destructive">{error}</p>}
 
-      <div className="sticky bottom-0 flex items-end gap-2 border-t bg-background py-4">
+      <div className="sticky bottom-0 flex items-end gap-2 border-t border-border/60 bg-background/70 py-4 backdrop-blur-md">
         <Textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder="Message this bot…"
           rows={1}
-          className="max-h-40 min-h-11 resize-none"
+          className="max-h-40 min-h-11 resize-none rounded-2xl border-border/60 bg-card/60"
         />
-        <Button size="icon" onClick={submit} disabled={sending || !draft.trim()} aria-label="Send">
-          <Send className="size-4" />
-        </Button>
+        <motion.div whileTap={{ scale: 0.92 }} whileHover={{ scale: 1.05 }}>
+          <Button
+            size="icon"
+            onClick={submit}
+            disabled={sending || !draft.trim()}
+            aria-label="Send"
+            className="glow-cool rounded-full"
+          >
+            <Send className="size-4" />
+          </Button>
+        </motion.div>
       </div>
     </div>
   );
@@ -102,21 +115,38 @@ function ChatWindow({ token }: { token: string }) {
 
 function EmptyState({ onPick }: { onPick: (text: string) => void }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 py-24 text-center">
-      <span className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-        <Sparkles className="size-6" />
-      </span>
+    <motion.div
+      className="flex flex-1 flex-col items-center justify-center gap-4 py-24 text-center"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+    >
+      <motion.span
+        className="glow-cool flex size-14 items-center justify-center rounded-2xl text-white"
+        style={{ background: "linear-gradient(135deg, var(--thread-cool), var(--thread-warm))" }}
+        animate={{ y: [0, -6, 0] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+      >
+        <Sparkles className="size-7" />
+      </motion.span>
       <div className="space-y-1">
-        <p className="font-medium">How can I help?</p>
+        <p className="font-heading font-medium">How can I help?</p>
         <p className="text-sm text-muted-foreground">Ask about an order, a product, or anything else.</p>
       </div>
       <div className="flex flex-wrap justify-center gap-2">
-        {SUGGESTIONS.map((s) => (
-          <Button key={s} variant="outline" size="sm" onClick={() => onPick(s)}>
-            {s}
-          </Button>
+        {SUGGESTIONS.map((s, i) => (
+          <motion.div
+            key={s}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 + i * 0.08 }}
+          >
+            <Button variant="outline" size="sm" className="glass border-0" onClick={() => onPick(s)}>
+              {s}
+            </Button>
+          </motion.div>
         ))}
       </div>
-    </div>
+    </motion.div>
   );
 }
