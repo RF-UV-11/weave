@@ -17,6 +17,8 @@ message CreateBotProfileRequest {
   string visibility = 7;
   repeated string guardrails = 8;
   bool web_search_enabled = 9;
+  string llm_provider = 10;
+  string llm_model = 11;
 }
 
 message CreateBotProfileResponse {

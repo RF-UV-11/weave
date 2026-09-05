@@ -22,6 +22,12 @@ message RegisterHttpToolRequest {
   string visibility = 8;
   // "general" | "analytics", defaults to "general" if empty.
   string category = 9;
+  // "" | "none" | "user_token", defaults to "none" if empty. See
+  // database.v1.HttpTool.auth_mode's comment for the full contract.
+  // "user_token" requires credential_secret to be set (it becomes the
+  // HMAC signing key for the per-user assertion mcp-gateway forwards),
+  // rejected at registration otherwise.
+  string auth_mode = 10;
 }
 
 message RegisterHttpToolResponse {

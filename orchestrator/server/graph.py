@@ -21,7 +21,8 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from llm.ollama_client import ToolCall, chat
+from llm.base import ToolCall
+from llm.router import get_provider
 from mcp_client import call_tool
 from server.guardrails import screen
 from server.web_search import is_web_search, run_web_search
@@ -32,6 +33,9 @@ class ChatState(TypedDict):
     messages: list[dict[str, str]]
     available_tools: list[AssembledTool]
     guardrails: list[str]
+    llm_provider: str
+    llm_model: str
+    user_assertion: str
     tool_used: str
     connector_used: str
     pending_call: ToolCall | None
@@ -45,7 +49,10 @@ async def _agent_node(state: ChatState) -> dict[str, Any]:
     if not state["available_tools"]:
         return {"pending_call": None}
 
-    result = await chat(state["messages"], tools=_tool_choices(state["available_tools"]))
+    provider = get_provider(state["llm_provider"])
+    result = await provider.chat(
+        state["messages"], tools=_tool_choices(state["available_tools"]), model=state["llm_model"] or None
+    )
     if result.tool_calls:
         return {"pending_call": result.tool_calls[0]}
 
@@ -56,10 +63,10 @@ async def _agent_node(state: ChatState) -> dict[str, Any]:
     return {"pending_call": None}
 
 
-async def _run_tool(match: AssembledTool, call: ToolCall) -> str:
+async def _run_tool(match: AssembledTool, call: ToolCall, user_assertion: str) -> str:
     if is_web_search(match.tool.name):
         return await run_web_search(call.arguments.get("query", ""))
-    return await call_tool(match.endpoint, call.name, call.arguments)
+    return await call_tool(match.endpoint, call.name, call.arguments, user_assertion=user_assertion or None)
 
 
 async def _tool_node(state: ChatState) -> dict[str, Any]:
@@ -73,7 +80,7 @@ async def _tool_node(state: ChatState) -> dict[str, Any]:
         tool_message = {"role": "tool", "content": f"Tool {call.name!r} is not available."}
         connector_used = ""
     else:
-        result_text = await _run_tool(match, call)
+        result_text = await _run_tool(match, call, state["user_assertion"])
 
         if state["guardrails"]:
             verdict = await screen(result_text, state["guardrails"])
@@ -121,15 +128,35 @@ async def run_turn(
     messages: list[dict[str, str]],
     available_tools: list[AssembledTool],
     guardrails: list[str] | None = None,
+    *,
+    llm_provider: str = "",
+    llm_model: str = "",
+    user_assertion: str = "",
 ) -> ChatState:
     """Decides whether a tool is needed and, if so, calls it. Returns the
     final state — state["messages"] is ready for the caller to stream a
     real answer from (see chat_service.py), and state["tool_used"]/
-    ["connector_used"] are set if a tool was called."""
+    ["connector_used"] are set if a tool was called.
+
+    llm_provider/llm_model come from the active bot profile
+    (tools/assembly.py's AssemblyResult) and select which LLM backend
+    makes the tool-or-not decision here (llm/router.py) — the same
+    provider/model chat_service.py then uses for the actual answer, so a
+    turn never mixes two different backends' opinions about the same
+    tool call.
+
+    user_assertion (server/auth.py's mint_user_assertion, minted once per
+    turn from the caller's own JWT claims) is forwarded on every tool
+    call this turn makes (server/graph.py's _run_tool); only a tool whose
+    HttpTool.auth_mode == "user_token" ever acts on it
+    (mcp-gateway/gateway/tenant_server.py) — every other tool ignores it."""
     initial: ChatState = {
         "messages": messages,
         "available_tools": available_tools,
         "guardrails": guardrails or [],
+        "llm_provider": llm_provider,
+        "llm_model": llm_model,
+        "user_assertion": user_assertion,
         "tool_used": "",
         "connector_used": "",
         "pending_call": None,

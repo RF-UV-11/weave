@@ -54,6 +54,19 @@ async def test_call_tool_round_trip_book_then_list(reference_server):
     assert "Ada" in result
 
 
+async def test_call_tool_with_user_assertion_against_a_server_that_ignores_meta(reference_server):
+    # reference-mcp never looks at _meta at all — this proves passing
+    # user_assertion is harmless against a real (non-Weave-managed) MCP
+    # server, not just against mcp-gateway's own tenant_server.py.
+    result = await call_tool(
+        reference_server,
+        "book_appointment",
+        {"date": "2026-08-20", "time": "15:00", "customer_name": "Ada"},
+        user_assertion="signed.jwt.here",
+    )
+    assert "Booked" in result
+
+
 async def test_list_tools_rejects_tool_missing_description(monkeypatch):
     from mcp.server import MCPServer
 

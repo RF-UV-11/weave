@@ -18,8 +18,16 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 
-[tool.setuptools]
-packages = ["weave"]
+[tool.setuptools.packages.find]
+# weave/gen/** (generated protobuf/grpc stubs — see initialize.sh, not
+# committed) has to be discovered dynamically rather than listed by name:
+# its package tree isn't known until codegen has run. `find:` picks up
+# whatever exists in the working tree at build time, which for an
+# editable install (this repo's own dev flow) means every gen/ subpackage
+# generated so far; a real (non-editable) build should run initialize.sh
+# (or an equivalent codegen step) before `pip install`/`build` so those
+# packages actually exist to be found.
+where = ["."]
 
 [build-system]
 requires = ["setuptools>=68"]

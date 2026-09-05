@@ -47,6 +47,9 @@ class AssemblyResult:
     visibility: str
     guardrails: list[str]
     web_search_enabled: bool
+    persona: str
+    llm_provider: str
+    llm_model: str
 
     @property
     def guardrails_active(self) -> bool:
@@ -131,4 +134,7 @@ async def assemble_tools(
         visibility=profile.visibility or "internal",
         guardrails=list(profile.guardrails),
         web_search_enabled=profile.web_search_enabled,
+        persona=profile.persona,
+        llm_provider=profile.llm_provider,
+        llm_model=profile.llm_model,
     )

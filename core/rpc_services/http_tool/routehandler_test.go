@@ -190,6 +190,74 @@ func TestRegisterHttpToolEncryptsCredential(t *testing.T) {
 	}
 }
 
+func TestRegisterHttpToolRejectsInvalidAuthMode(t *testing.T) {
+	s := NewServer(testVault, gatewayBaseURL, net.DefaultResolver, true)
+	tenantID := newTenant(t)
+	_, err := callAs(t, tenantID, "owner", func(ctx context.Context, req any) (any, error) {
+		return s.RegisterHttpTool(ctx, &dataaccessv1.RegisterHttpToolRequest{
+			TenantId: tenantID, Name: "x", Description: "does x", HttpEndpoint: "https://x", HttpMethod: "GET",
+			AuthMode: "oauth2",
+		})
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
+	}
+}
+
+func TestRegisterHttpToolRejectsUserTokenWithoutCredential(t *testing.T) {
+	s := NewServer(testVault, gatewayBaseURL, net.DefaultResolver, true)
+	tenantID := newTenant(t)
+	_, err := callAs(t, tenantID, "owner", func(ctx context.Context, req any) (any, error) {
+		return s.RegisterHttpTool(ctx, &dataaccessv1.RegisterHttpToolRequest{
+			TenantId: tenantID, Name: "get_my_data", Description: "restricted to the caller's own data",
+			HttpEndpoint: "https://x", HttpMethod: "GET", AuthMode: "user_token",
+		})
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument (user_token requires a credential to sign with), got %v", err)
+	}
+}
+
+func TestRegisterHttpToolPersistsUserTokenAuthMode(t *testing.T) {
+	s := NewServer(testVault, gatewayBaseURL, net.DefaultResolver, true)
+	tenantID := newTenant(t)
+
+	resp, err := callAs(t, tenantID, "owner", func(ctx context.Context, req any) (any, error) {
+		return s.RegisterHttpTool(ctx, &dataaccessv1.RegisterHttpToolRequest{
+			TenantId: tenantID, Name: "get_my_transactions", Description: "the caller's own transactions",
+			HttpEndpoint: "https://finance.example/me/transactions", HttpMethod: "GET",
+			AuthMode: "user_token", CredentialSecret: "sk-signing-key",
+		})
+	})
+	if err != nil {
+		t.Fatalf("RegisterHttpTool: %v", err)
+	}
+	tool := resp.(*dataaccessv1.RegisterHttpToolResponse).GetHttpTool()
+	if tool.GetAuthMode() != "user_token" {
+		t.Fatalf("got auth_mode %q", tool.GetAuthMode())
+	}
+	if tool.GetCredentialRefId() == "" {
+		t.Fatal("expected the signing-key credential to be vaulted, same as any other credential_secret")
+	}
+}
+
+func TestRegisterHttpToolDefaultsAuthModeToNone(t *testing.T) {
+	s := NewServer(testVault, gatewayBaseURL, net.DefaultResolver, true)
+	tenantID := newTenant(t)
+
+	resp, err := callAs(t, tenantID, "owner", func(ctx context.Context, req any) (any, error) {
+		return s.RegisterHttpTool(ctx, &dataaccessv1.RegisterHttpToolRequest{
+			TenantId: tenantID, Name: "x", Description: "does x", HttpEndpoint: "https://x", HttpMethod: "GET",
+		})
+	})
+	if err != nil {
+		t.Fatalf("RegisterHttpTool: %v", err)
+	}
+	if got := resp.(*dataaccessv1.RegisterHttpToolResponse).GetHttpTool().GetAuthMode(); got != "none" {
+		t.Fatalf("expected default auth_mode \"none\", got %q", got)
+	}
+}
+
 func TestListHttpToolsIsolatedPerTenant(t *testing.T) {
 	s := NewServer(testVault, gatewayBaseURL, net.DefaultResolver, true)
 	tenantA := newTenant(t)

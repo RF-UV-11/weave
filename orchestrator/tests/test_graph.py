@@ -1,7 +1,9 @@
+from types import SimpleNamespace
+
 import pytest
 
 import server.graph as graph_module
-from llm.ollama_client import ChatResult, ToolCall
+from llm.base import ChatResult, ToolCall
 from mcp_client.client import McpTool
 from server.guardrails import ScreenResult
 from server.web_search import WEB_SEARCH_TOOL
@@ -17,11 +19,19 @@ def make_tool(name="book_appointment", description="Book a slot"):
     )
 
 
+def stub_provider(fake_chat, monkeypatch):
+    """_agent_node resolves a provider via get_provider(state["llm_provider"])
+    and calls provider.chat(...) — this stubs that resolution so tests can
+    supply just the chat() behavior they care about, regardless of which
+    provider a test's run_turn() call would otherwise pick."""
+    monkeypatch.setattr(graph_module, "get_provider", lambda name: SimpleNamespace(chat=fake_chat))
+
+
 async def test_no_tools_available_never_calls_the_model(monkeypatch):
     async def boom(*args, **kwargs):
         raise AssertionError("chat() should not be called when there are no tools")
 
-    monkeypatch.setattr(graph_module, "chat", boom)
+    stub_provider(boom, monkeypatch)
 
     state = await graph_module.run_turn([{"role": "user", "content": "hi"}], [])
     assert state["tool_used"] == ""
@@ -29,10 +39,10 @@ async def test_no_tools_available_never_calls_the_model(monkeypatch):
 
 
 async def test_model_answers_directly_without_a_tool(monkeypatch):
-    async def fake_chat(messages, tools=None):
+    async def fake_chat(messages, tools=None, model=None):
         return ChatResult(content="some answer the graph should discard", tool_calls=[])
 
-    monkeypatch.setattr(graph_module, "chat", fake_chat)
+    stub_provider(fake_chat, monkeypatch)
 
     messages = [{"role": "user", "content": "what's 2+2?"}]
     state = await graph_module.run_turn(messages, [make_tool()])
@@ -45,15 +55,15 @@ async def test_model_answers_directly_without_a_tool(monkeypatch):
 
 
 async def test_tool_call_executes_and_embeds_description(monkeypatch):
-    async def fake_chat(messages, tools=None):
+    async def fake_chat(messages, tools=None, model=None):
         return ChatResult(content="", tool_calls=[ToolCall(name="book_appointment", arguments={"date": "2026-08-20"})])
 
-    async def fake_call_tool(endpoint, name, arguments):
+    async def fake_call_tool(endpoint, name, arguments, user_assertion=None):
         assert endpoint == "http://booking.example"
         assert name == "book_appointment"
         return "Booked bkg_1"
 
-    monkeypatch.setattr(graph_module, "chat", fake_chat)
+    stub_provider(fake_chat, monkeypatch)
     monkeypatch.setattr(graph_module, "call_tool", fake_call_tool)
 
     messages = [{"role": "user", "content": "book me a slot"}]
@@ -68,13 +78,13 @@ async def test_tool_call_executes_and_embeds_description(monkeypatch):
 
 
 async def test_hallucinated_tool_name_handled_without_crashing(monkeypatch):
-    async def fake_chat(messages, tools=None):
+    async def fake_chat(messages, tools=None, model=None):
         return ChatResult(content="", tool_calls=[ToolCall(name="delete_universe", arguments={})])
 
     async def unexpected_call(*args, **kwargs):
         raise AssertionError("call_tool should not be invoked for an unknown tool name")
 
-    monkeypatch.setattr(graph_module, "chat", fake_chat)
+    stub_provider(fake_chat, monkeypatch)
     monkeypatch.setattr(graph_module, "call_tool", unexpected_call)
 
     state = await graph_module.run_turn([{"role": "user", "content": "do something bad"}], [make_tool()])
@@ -85,7 +95,7 @@ async def test_hallucinated_tool_name_handled_without_crashing(monkeypatch):
 
 
 async def test_web_search_tool_dispatches_to_run_web_search_not_call_tool(monkeypatch):
-    async def fake_chat(messages, tools=None):
+    async def fake_chat(messages, tools=None, model=None):
         return ChatResult(content="", tool_calls=[ToolCall(name="web_search", arguments={"query": "weather in london"})])
 
     async def fake_run_web_search(query):
@@ -95,7 +105,7 @@ async def test_web_search_tool_dispatches_to_run_web_search_not_call_tool(monkey
     async def unexpected_call_tool(*args, **kwargs):
         raise AssertionError("call_tool (MCP path) should not be used for the built-in web_search tool")
 
-    monkeypatch.setattr(graph_module, "chat", fake_chat)
+    stub_provider(fake_chat, monkeypatch)
     monkeypatch.setattr(graph_module, "run_web_search", fake_run_web_search)
     monkeypatch.setattr(graph_module, "call_tool", unexpected_call_tool)
 
@@ -106,17 +116,17 @@ async def test_web_search_tool_dispatches_to_run_web_search_not_call_tool(monkey
 
 
 async def test_guardrail_violation_redacts_tool_result_before_context(monkeypatch):
-    async def fake_chat(messages, tools=None):
+    async def fake_chat(messages, tools=None, model=None):
         return ChatResult(content="", tool_calls=[ToolCall(name="book_appointment", arguments={})])
 
-    async def fake_call_tool(endpoint, name, arguments):
+    async def fake_call_tool(endpoint, name, arguments, user_assertion=None):
         return "Sensitive: supplied by Acme Corp"
 
     async def fake_screen(text, guardrails):
         assert "Acme Corp" in text
         return ScreenResult(ok=False, reason="mentions supplier")
 
-    monkeypatch.setattr(graph_module, "chat", fake_chat)
+    stub_provider(fake_chat, monkeypatch)
     monkeypatch.setattr(graph_module, "call_tool", fake_call_tool)
     monkeypatch.setattr(graph_module, "screen", fake_screen)
 
@@ -132,16 +142,16 @@ async def test_guardrail_violation_redacts_tool_result_before_context(monkeypatc
 
 
 async def test_guardrail_pass_leaves_tool_result_untouched(monkeypatch):
-    async def fake_chat(messages, tools=None):
+    async def fake_chat(messages, tools=None, model=None):
         return ChatResult(content="", tool_calls=[ToolCall(name="book_appointment", arguments={})])
 
-    async def fake_call_tool(endpoint, name, arguments):
+    async def fake_call_tool(endpoint, name, arguments, user_assertion=None):
         return "Booked bkg_1"
 
     async def fake_screen(text, guardrails):
         return ScreenResult(ok=True)
 
-    monkeypatch.setattr(graph_module, "chat", fake_chat)
+    stub_provider(fake_chat, monkeypatch)
     monkeypatch.setattr(graph_module, "call_tool", fake_call_tool)
     monkeypatch.setattr(graph_module, "screen", fake_screen)
 
@@ -155,19 +165,96 @@ async def test_guardrail_pass_leaves_tool_result_untouched(monkeypatch):
 
 
 async def test_no_guardrails_skips_screening_entirely(monkeypatch):
-    async def fake_chat(messages, tools=None):
+    async def fake_chat(messages, tools=None, model=None):
         return ChatResult(content="", tool_calls=[ToolCall(name="book_appointment", arguments={})])
 
-    async def fake_call_tool(endpoint, name, arguments):
+    async def fake_call_tool(endpoint, name, arguments, user_assertion=None):
         return "Booked bkg_1"
 
     async def unexpected_screen(*args, **kwargs):
         raise AssertionError("screen() should not be called when no guardrails are configured")
 
-    monkeypatch.setattr(graph_module, "chat", fake_chat)
+    stub_provider(fake_chat, monkeypatch)
     monkeypatch.setattr(graph_module, "call_tool", fake_call_tool)
     monkeypatch.setattr(graph_module, "screen", unexpected_screen)
 
     state = await graph_module.run_turn([{"role": "user", "content": "book me a slot"}], [make_tool()])
 
     assert "Booked bkg_1" in state["messages"][-1]["content"]
+
+
+async def test_run_turn_passes_llm_provider_and_model_to_get_provider(monkeypatch):
+    seen = {}
+
+    def fake_get_provider(name):
+        seen["provider_name"] = name
+
+        async def fake_chat(messages, tools=None, model=None):
+            seen["model"] = model
+            return ChatResult(content="answer", tool_calls=[])
+
+        return SimpleNamespace(chat=fake_chat)
+
+    monkeypatch.setattr(graph_module, "get_provider", fake_get_provider)
+
+    await graph_module.run_turn(
+        [{"role": "user", "content": "hi"}], [make_tool()], llm_provider="openai", llm_model="gpt-4o-mini"
+    )
+
+    assert seen["provider_name"] == "openai"
+    assert seen["model"] == "gpt-4o-mini"
+
+
+async def test_run_turn_passes_none_for_model_when_llm_model_unset(monkeypatch):
+    seen = {}
+
+    def fake_get_provider(name):
+        async def fake_chat(messages, tools=None, model=None):
+            seen["model"] = model
+            return ChatResult(content="answer", tool_calls=[])
+
+        return SimpleNamespace(chat=fake_chat)
+
+    monkeypatch.setattr(graph_module, "get_provider", fake_get_provider)
+
+    await graph_module.run_turn([{"role": "user", "content": "hi"}], [make_tool()])
+
+    assert seen["model"] is None
+
+
+async def test_run_turn_forwards_user_assertion_to_call_tool(monkeypatch):
+    async def fake_chat(messages, tools=None, model=None):
+        return ChatResult(content="", tool_calls=[ToolCall(name="book_appointment", arguments={})])
+
+    seen = {}
+
+    async def fake_call_tool(endpoint, name, arguments, user_assertion=None):
+        seen["user_assertion"] = user_assertion
+        return "Booked bkg_1"
+
+    stub_provider(fake_chat, monkeypatch)
+    monkeypatch.setattr(graph_module, "call_tool", fake_call_tool)
+
+    await graph_module.run_turn(
+        [{"role": "user", "content": "book me a slot"}], [make_tool()], user_assertion="signed.jwt.here"
+    )
+
+    assert seen["user_assertion"] == "signed.jwt.here"
+
+
+async def test_run_turn_forwards_none_when_user_assertion_unset(monkeypatch):
+    async def fake_chat(messages, tools=None, model=None):
+        return ChatResult(content="", tool_calls=[ToolCall(name="book_appointment", arguments={})])
+
+    seen = {}
+
+    async def fake_call_tool(endpoint, name, arguments, user_assertion=None):
+        seen["user_assertion"] = user_assertion
+        return "Booked bkg_1"
+
+    stub_provider(fake_chat, monkeypatch)
+    monkeypatch.setattr(graph_module, "call_tool", fake_call_tool)
+
+    await graph_module.run_turn([{"role": "user", "content": "book me a slot"}], [make_tool()])
+
+    assert seen["user_assertion"] is None

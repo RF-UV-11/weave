@@ -205,6 +205,56 @@ func TestCreateBotProfileRejectsInvalidVisibility(t *testing.T) {
 	}
 }
 
+func TestCreateBotProfileRejectsInvalidLlmProvider(t *testing.T) {
+	s := NewServer()
+	tenantID := newTenant(t)
+	_, err := callAs(t, tenantID, "owner", func(ctx context.Context, req any) (any, error) {
+		return s.CreateBotProfile(ctx, &dataaccessv1.CreateBotProfileRequest{
+			TenantId: tenantID, Name: "bad-provider", Channels: []string{"web-widget"}, LlmProvider: "claude",
+		})
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
+	}
+}
+
+func TestCreateBotProfilePersistsLlmProviderAndModel(t *testing.T) {
+	s := NewServer()
+	tenantID := newTenant(t)
+	resp, err := callAs(t, tenantID, "owner", func(ctx context.Context, req any) (any, error) {
+		return s.CreateBotProfile(ctx, &dataaccessv1.CreateBotProfileRequest{
+			TenantId: tenantID, Name: "gpt-backed", Channels: []string{"web-widget"},
+			LlmProvider: "openai", LlmModel: "gpt-4o-mini",
+		})
+	})
+	if err != nil {
+		t.Fatalf("CreateBotProfile: %v", err)
+	}
+	p := resp.(*dataaccessv1.CreateBotProfileResponse).GetBotProfile()
+	if p.GetLlmProvider() != "openai" || p.GetLlmModel() != "gpt-4o-mini" {
+		t.Fatalf("got llm_provider=%q llm_model=%q", p.GetLlmProvider(), p.GetLlmModel())
+	}
+}
+
+func TestCreateBotProfileDefaultsLlmProviderToEmpty(t *testing.T) {
+	s := NewServer()
+	tenantID := newTenant(t)
+	resp, err := callAs(t, tenantID, "owner", func(ctx context.Context, req any) (any, error) {
+		return s.CreateBotProfile(ctx, &dataaccessv1.CreateBotProfileRequest{
+			TenantId: tenantID, Name: "default-provider", Channels: []string{"web-widget"},
+		})
+	})
+	if err != nil {
+		t.Fatalf("CreateBotProfile: %v", err)
+	}
+	// "" means "use orchestrator's default (ollama)" — unlike visibility,
+	// this is not normalized to a named default at write time, since
+	// orchestrator (not core) owns the default-provider decision.
+	if got := resp.(*dataaccessv1.CreateBotProfileResponse).GetBotProfile().GetLlmProvider(); got != "" {
+		t.Fatalf("expected default llm_provider \"\", got %q", got)
+	}
+}
+
 func TestCreateBotProfilePersistsGuardrails(t *testing.T) {
 	s := NewServer()
 	tenantID := newTenant(t)

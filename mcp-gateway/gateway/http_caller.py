@@ -17,6 +17,14 @@ failure modes before writing the happy path, not after):
   returned as tool content so the model can see e.g. "404: order not
   found" and respond sensibly, rather than the tool call opaquely
   erroring out.
+
+`secret` is always sent as a static "Authorization: Bearer" header — the
+long-standing, still-default behavior (HttpTool.auth_mode == "none").
+`extra_headers` is how tenant_server.py forwards the X-Weave-User-*
+headers for an auth_mode == "user_token" tool instead (see that module
+and http_signing.py) — a separate mechanism, not a variant of `secret`,
+since a "user_token" tool's credential is reinterpreted as a signing key
+rather than a bearer token and is never sent as one.
 """
 
 import re
@@ -55,11 +63,12 @@ async def call_http_tool(
     method: str,
     arguments: dict,
     secret: str | None,
+    extra_headers: dict[str, str] | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> str:
     url, remaining_args = _build_url(endpoint, arguments)
 
-    headers = {}
+    headers = dict(extra_headers or {})
     if secret:
         headers["Authorization"] = f"Bearer {secret}"
 

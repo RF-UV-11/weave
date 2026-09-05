@@ -7,6 +7,17 @@ actual reasoning and tool-calling later. Nothing here runs an MCP server,
 holds conversation state, or calls an LLM — see docs/architecture/
 ARCHITECTURE.md for why (core is the only tier with Weave's own DB
 credentials; keeping execution server-side is what makes that true).
+
+Self-contained by design: this package bundles its own generated gRPC
+stubs (./gen, see _core_client.py) rather than depending on any other
+package in this monorepo. The intent is that `weave` is installable and
+usable inside *any* Python project — not just the reference projects that
+happen to live alongside this repo (`tarang-electronics`,
+`suvidha-finserve`) — with nothing beyond this one package (plus grpcio/
+protobuf) on the importing project's side. Pre-publish, that means a
+path or git dependency on `packages/weave-sdk` (see initialize.sh for
+the codegen step any consumer needs run once); post-publish, `pip install
+weave-sdk` with no further setup.
 """
 
 import asyncio
@@ -15,9 +26,14 @@ import threading
 from dataclasses import dataclass
 from typing import Any
 
-from weave_shared_clients import CoreClient, bearer_metadata
+# Import order matters: importing ._core_client first is what puts this
+# package's bundled gen/ on sys.path (see that module's docstring), which
+# is what makes the core.data_access.v1 import below resolve at all.
+from ._core_client import CoreClient, bearer_metadata
 
-from core.data_access.v1 import auth_pb2, bot_profile_pb2, connector_pb2, http_tool_pb2
+from core.data_access.v1 import auth_pb2, bot_profile_pb2, connector_pb2, http_tool_pb2, tenant_pb2
+
+from .openapi import tools_from_openapi
 
 _DEFAULT_SCHEMA = {"type": "object", "properties": {}}
 
@@ -31,6 +47,7 @@ class RegisteredTool:
     method: str
     visibility: str
     category: str
+    auth_mode: str = "none"
 
 
 @dataclass
@@ -60,8 +77,23 @@ class WeaveClient:
         credential_secret: str | None = None,
         visibility: str = "internal",
         category: str = "general",
+        auth_mode: str = "none",
     ) -> RegisteredTool:
-        """Registers a public HTTP endpoint as a tool your bot can call.
+        """Registers ONE public HTTP endpoint as a tool your bot can call.
+
+        Call this once per endpoint you want Weave to reason over — not
+        once per endpoint you have. If your API has 70 routes and only 40
+        are relevant to a bot (the rest might be internal plumbing, admin-
+        only, deprecated, or simply not something a customer or staff
+        member would ever need to ask about), call add_tool() 40 times and
+        leave the other 30 unregistered entirely — or, if you already have
+        an OpenAPI spec for your API, see `add_tools_from_openapi()` below
+        to do the same 40-of-70 selection in one call instead of 40.
+        There's no "register everything" default either way: every tool a
+        bot can reach should be a deliberate decision (this is also why
+        `visibility` below has no safe default — see ARCHITECTURE.md §3),
+        and an unregistered endpoint is simply invisible to Weave, not a
+        partially-exposed one.
 
         endpoint may contain {param} placeholders matching keys in
         params_schema's properties — those are substituted into the URL
@@ -79,6 +111,24 @@ class WeaveClient:
         (default) or "analytics" — tags this tool for the analytics
         specialist route (docs/architecture/ARCHITECTURE.md §3's
         multi-agent supervisor).
+
+        auth_mode: "none" (default — credential_secret, if any, is sent
+        as a static "Authorization: Bearer" header, the same secret for
+        every caller) or "user_token" — for an endpoint that must be
+        scoped to the specific signed-in Weave user asking (e.g. a
+        finance app's "my own transactions"), not just any authorized
+        caller. Every ChatStream turn is already authenticated, so this
+        restricts a tool to real, registered users, never opens one up.
+        Requires credential_secret to be set — it's reinterpreted as an
+        HMAC signing key rather than a bearer token: Weave verifies which
+        user is asking, computes signature = HMAC-SHA256(credential_secret,
+        f"{tenant_id}:{user_id}"), and sends it to your endpoint as
+        X-Weave-User-Id / X-Weave-Tenant-Id / X-Weave-User-Signature
+        headers — verify that signature with the same secret you set here
+        (the same webhook-signing-secret pattern Stripe/GitHub use for
+        verifying inbound requests) before trusting X-Weave-User-Id, then
+        scope your response to that user however you map Weave users to
+        your own user records.
         """
         resp = await self._core.http_tool.RegisterHttpTool(
             http_tool_pb2.RegisterHttpToolRequest(
@@ -91,21 +141,89 @@ class WeaveClient:
                 credential_secret=credential_secret or "",
                 visibility=visibility,
                 category=category,
+                auth_mode=auth_mode,
             ),
             metadata=bearer_metadata(self._token),
         )
         t = resp.http_tool
         return RegisteredTool(
             id=t._id, name=t.name, description=t.description, endpoint=t.http_endpoint, method=t.http_method,
-            visibility=t.visibility, category=t.category,
+            visibility=t.visibility, category=t.category, auth_mode=t.auth_mode or "none",
         )
+
+    async def add_tools_from_openapi(
+        self,
+        spec: dict[str, Any],
+        *,
+        base_url: str | None = None,
+        include: set[str] | list[str] | None = None,
+        exclude: set[str] | list[str] | None = None,
+        default_visibility: str = "internal",
+        default_category: str = "general",
+        default_auth_mode: str = "none",
+        credential_secret: str | None = None,
+    ) -> list[RegisteredTool]:
+        """Bulk-registers tools from a tenant's own OpenAPI 3.x document —
+        the answer to "I have 70 endpoints and only want 40 of them as
+        tools" without 40 individual add_tool() calls. See `weave.openapi`
+        module docstring for the full design rationale (the gRPC-service
+        equivalent: a descriptor-driven tool generator with an allow/deny
+        list, same idea applied to a REST API's own descriptor — its
+        OpenAPI spec — instead of a compiled proto descriptor).
+
+        include/exclude are operationId sets, mutually exclusive: pass
+        `include` to register only those 40, or `exclude` to register
+        everything except a named 30. Passing neither registers every
+        operation in the spec — rarely right for a real integrator with a
+        large surface, so most callers should pass one.
+
+        Every selected operation still needs a `description` or `summary`
+        in the spec (same non-negotiable rule as `add_tool()`) and still
+        gets an explicit visibility/category — `default_visibility`/
+        `default_category` apply spec-wide, but any operation can override
+        either via the `x-weave-visibility`/`x-weave-category` OpenAPI
+        extension keys, the bulk-path equivalent of `add_tool()`'s
+        `visibility=`/`category=` arguments. `default_auth_mode`/
+        `x-weave-auth-mode` work the same way for `add_tool()`'s
+        `auth_mode=` — e.g. a finance app's spec might mark every
+        `/me/*` operation `x-weave-auth-mode: user_token` while leaving
+        public endpoints at the "none" default. `credential_secret` here
+        is one shared secret applied to every tool this call registers
+        (bulk registration doesn't support a different secret per
+        operation) — fine for a single signing key covering a whole
+        `user_token`-tagged batch, call `add_tool()` directly instead if
+        different operations genuinely need different secrets.
+        """
+        planned = tools_from_openapi(
+            spec,
+            base_url=base_url,
+            include=include,
+            exclude=exclude,
+            default_visibility=default_visibility,
+            default_category=default_category,
+            default_auth_mode=default_auth_mode,
+        )
+        return [
+            await self.add_tool(
+                name=t.name,
+                description=t.description,
+                endpoint=t.endpoint,
+                method=t.method,
+                params_schema=t.params_schema,
+                credential_secret=credential_secret,
+                visibility=t.visibility,
+                category=t.category,
+                auth_mode=t.auth_mode,
+            )
+            for t in planned
+        ]
 
     async def list_tools(self) -> list[RegisteredTool]:
         resp = await self._core.http_tool.ListHttpTools(http_tool_pb2.ListHttpToolsRequest(tenant_id=self._tenant_id))
         return [
             RegisteredTool(
                 id=t._id, name=t.name, description=t.description, endpoint=t.http_endpoint, method=t.http_method,
-                visibility=t.visibility, category=t.category,
+                visibility=t.visibility, category=t.category, auth_mode=t.auth_mode or "none",
             )
             for t in resp.http_tools
         ]
@@ -127,13 +245,54 @@ class WeaveClient:
         visibility: str = "internal",
         guardrails: list[str] | None = None,
         web_search_enabled: bool = False,
+        llm_provider: str = "",
+        llm_model: str = "",
     ) -> BotProfileHandle:
         """Creates a bot profile — the unit a business points a channel at.
+        A tenant typically creates more than one (e.g. one per audience,
+        like the "external"/"internal" pair every reference project in
+        this repo's sibling demos uses): each gets its own persona,
+        guardrails, and channel, but all draw from the same tool registry
+        — the split is which tools/behavior a profile gets, not a second
+        copy of your systems.
+
         roles_allowed is a list of role names ("owner"|"admin"|"staff"|
         "customer"). connector_ids defaults to this tenant's single
         weave_managed connector (every add_tool()'d tool lives there) if
         omitted, since that's the common case for a business using only
         the HTTP-tool SDK path rather than a hand-rolled MCP server.
+
+        persona is this profile's entire system prompt, verbatim — not a
+        file path (there's nothing on Weave's side that reads tenant
+        files). Write the actual prompt text here: who this bot is, its
+        tone, and its task scope, e.g. "You are Suvidha FinServe's client-
+        facing assistant. Only discuss the caller's own company's
+        invoices and filings; never reference another client by name."
+        Left as "" (the default), the bot still works but gets a generic
+        fallback prompt instead of anything specific to your business —
+        write one per profile rather than leaving it blank.
+
+        guardrails is this profile's own list of disclosure rules, e.g.
+        "Never reveal another customer's contact details." — free text,
+        one rule per list entry, enforced only when visibility=="external"
+        (docs/architecture/SECURITY.md §6). Each bot profile has its own
+        guardrails list; an "internal" and "external" profile on the same
+        tenant commonly carry entirely different rules (or none, for the
+        staff-facing one) rather than sharing one.
+
+        llm_provider/llm_model choose which LLM backend generates this
+        profile's turns — "" (default) or "ollama" for orchestrator's
+        local model (OLLAMA_MODEL/OLLAMA_HOST), "openai" for anything
+        speaking the OpenAI chat-completions wire format (OpenAI itself,
+        Azure OpenAI, Groq, a self-hosted vLLM/LM Studio server — which
+        one is determined by orchestrator's own OPENAI_BASE_URL
+        configuration, not by a value you set here). llm_model is the
+        model name/id to request from whichever provider that resolves
+        to, e.g. "llama3.2:3b" or "gpt-4o-mini" — left "", each provider
+        falls back to its own configured default. This is orchestrator
+        picking between backends it already holds credentials for, not a
+        place to supply your own API key (see the field's proto comment,
+        protos/database/v1/bot_profile.proto, for why).
         """
         resolved_connector_ids = connector_ids
         if resolved_connector_ids is None:
@@ -154,6 +313,8 @@ class WeaveClient:
                 visibility=visibility,
                 guardrails=guardrails or [],
                 web_search_enabled=web_search_enabled,
+                llm_provider=llm_provider,
+                llm_model=llm_model,
             ),
             metadata=bearer_metadata(self._token),
         )
@@ -168,6 +329,36 @@ class WeaveClient:
 
     async def __aexit__(self, *exc: object) -> None:
         await self.close()
+
+
+async def sign_up(
+    *, display_name: str, email: str, password: str, tenant_type: str = "business", core_addr: str = "localhost:9090"
+) -> str:
+    """Step 1 of onboarding a new business onto Weave: CreateTenant +
+    Register(owner) — core's real public bootstrap RPCs, unauthenticated
+    by design (there's no token to present before a tenant/user exists at
+    all), not a special-cased dev shortcut. Returns the new tenant_id.
+
+    Exists as its own function — rather than folding into connect_async,
+    which only ever logs in — so an integrator's own setup script can
+    narrate "sign up" as an explicit, separate step (see
+    tarang-electronics/onboard.py or suvidha-finserve/onboard.py for a
+    worked example) without reaching past this SDK for
+    `weave_shared_clients`/raw core protos to do it — this package is
+    meant to be everything an external project needs, on its own.
+    """
+    core = CoreClient(core_addr)
+    try:
+        tenant_resp = await core.tenant.CreateTenant(
+            tenant_pb2.CreateTenantRequest(display_name=display_name, tenant_type=tenant_type)
+        )
+        tenant_id = tenant_resp.tenant._id
+        await core.auth.Register(
+            auth_pb2.RegisterRequest(tenant_id=tenant_id, email=email, password=password, role=1)  # 1 == owner
+        )
+        return tenant_id
+    finally:
+        await core.close()
 
 
 async def connect_async(*, tenant_id: str, email: str, password: str, core_addr: str = "localhost:9090") -> WeaveClient:
@@ -203,6 +394,9 @@ class SyncWeaveClient:
 
     def add_tool(self, **kwargs: Any) -> RegisteredTool:
         return self._run(self._async_client.add_tool(**kwargs))
+
+    def add_tools_from_openapi(self, spec: dict[str, Any], **kwargs: Any) -> list[RegisteredTool]:
+        return self._run(self._async_client.add_tools_from_openapi(spec, **kwargs))
 
     def list_tools(self) -> list[RegisteredTool]:
         return self._run(self._async_client.list_tools())

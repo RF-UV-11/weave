@@ -62,7 +62,7 @@ func TestCreateAndListHttpTools(t *testing.T) {
 	}
 
 	tool, err := CreateHttpTool(t.Context(), tenant.GetXId(), connector.GetXId(), "get_order_status",
-		"Look up an order's shipping status", "https://api.acme.test/orders/{id}", "GET", `{"type":"object"}`, "", "external", "general")
+		"Look up an order's shipping status", "https://api.acme.test/orders/{id}", "GET", `{"type":"object"}`, "", "external", "general", "none")
 	if err != nil {
 		t.Fatalf("CreateHttpTool: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestListHttpToolsIsolatedPerTenant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOrCreateManagedConnector: %v", err)
 	}
-	if _, err := CreateHttpTool(t.Context(), tenantA.GetXId(), connA.GetXId(), "shared_name", "desc", "https://x", "GET", "{}", "", "internal", "general"); err != nil {
+	if _, err := CreateHttpTool(t.Context(), tenantA.GetXId(), connA.GetXId(), "shared_name", "desc", "https://x", "GET", "{}", "", "internal", "general", "none"); err != nil {
 		t.Fatalf("CreateHttpTool: %v", err)
 	}
 
@@ -108,6 +108,35 @@ func TestListHttpToolsIsolatedPerTenant(t *testing.T) {
 	}
 }
 
+func TestCreateHttpToolPersistsAuthMode(t *testing.T) {
+	tenant, err := CreateTenant(t.Context(), "Auth Mode Test Co", "business")
+	if err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	connector, err := GetOrCreateManagedConnector(t.Context(), tenant.GetXId(), "http://gateway.internal")
+	if err != nil {
+		t.Fatalf("GetOrCreateManagedConnector: %v", err)
+	}
+
+	tool, err := CreateHttpTool(t.Context(), tenant.GetXId(), connector.GetXId(), "get_my_transactions",
+		"Look up the calling user's own transactions", "https://api.acme.test/me/transactions", "GET", `{"type":"object"}`,
+		"cred_1", "external", "general", "user_token")
+	if err != nil {
+		t.Fatalf("CreateHttpTool: %v", err)
+	}
+	if tool.GetAuthMode() != "user_token" {
+		t.Fatalf("got auth_mode %q", tool.GetAuthMode())
+	}
+
+	fetched, err := GetHttpTool(t.Context(), tenant.GetXId(), tool.GetXId())
+	if err != nil {
+		t.Fatalf("GetHttpTool: %v", err)
+	}
+	if fetched.GetAuthMode() != "user_token" {
+		t.Fatalf("auth_mode didn't round-trip: %+v", fetched)
+	}
+}
+
 func TestDeleteHttpTool(t *testing.T) {
 	tenant, err := CreateTenant(t.Context(), "Delete HTTP Tool Co", "business")
 	if err != nil {
@@ -117,7 +146,7 @@ func TestDeleteHttpTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOrCreateManagedConnector: %v", err)
 	}
-	tool, err := CreateHttpTool(t.Context(), tenant.GetXId(), connector.GetXId(), "tool_to_delete", "desc", "https://x", "GET", "{}", "", "internal", "general")
+	tool, err := CreateHttpTool(t.Context(), tenant.GetXId(), connector.GetXId(), "tool_to_delete", "desc", "https://x", "GET", "{}", "", "internal", "general", "none")
 	if err != nil {
 		t.Fatalf("CreateHttpTool: %v", err)
 	}

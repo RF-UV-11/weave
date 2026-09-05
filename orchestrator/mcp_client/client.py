@@ -68,13 +68,25 @@ async def list_tools(endpoint: McpTarget) -> list[McpTool]:
     return tools
 
 
-async def call_tool(endpoint: McpTarget, tool_name: str, arguments: dict[str, Any]) -> str:
+async def call_tool(
+    endpoint: McpTarget, tool_name: str, arguments: dict[str, Any], *, user_assertion: str | None = None
+) -> str:
     """Calls tool_name on the connector at endpoint and returns its
     result as text (MCP tool results are a list of content blocks; this
     concatenates any text blocks, which covers the reference connector
-    and any well-behaved tool)."""
+    and any well-behaved tool).
+
+    user_assertion (server/auth.py's mint_user_assertion) is carried via
+    MCP's standard tools/call `_meta` field under the "weave_user_assertion"
+    key — the same open-extension mechanism `_meta` already carries
+    visibility/category on tools/list, just on the call side this time.
+    Harmless to send on every call: a real (non-Weave) MCP server ignores
+    an unrecognized `_meta` key by protocol design, and mcp-gateway only
+    ever acts on it for a tool whose HttpTool.auth_mode == "user_token" —
+    every other tool call passes straight through unaffected."""
+    meta = {"weave_user_assertion": user_assertion} if user_assertion else None
     async with Client(endpoint) as client:
-        result = await client.call_tool(tool_name, arguments)
+        result = await client.call_tool(tool_name, arguments, meta=meta)
 
     parts = [block.text for block in result.content if getattr(block, "type", None) == "text"]
     return "\n".join(parts) if parts else ""

@@ -57,6 +57,23 @@ func (s *Server) RegisterHttpTool(ctx context.Context, req *dataaccessv1.Registe
 	if category != "general" && category != "analytics" {
 		return nil, status.Error(codes.InvalidArgument, "category must be \"general\" or \"analytics\"")
 	}
+	authMode := req.GetAuthMode()
+	if authMode == "" {
+		authMode = "none"
+	}
+	if authMode != "none" && authMode != "user_token" {
+		return nil, status.Error(codes.InvalidArgument, "auth_mode must be \"none\" or \"user_token\"")
+	}
+	if authMode == "user_token" && req.GetCredentialSecret() == "" {
+		// A "user_token" tool's credential doubles as the HMAC signing
+		// key mcp-gateway uses to prove the forwarded user identity to
+		// the tenant's own endpoint (database/v1/http_tool.proto's
+		// auth_mode comment) — with no secret, mcp-gateway would have
+		// nothing to sign with and the tenant's API could never verify
+		// the assertion, silently defeating the whole point of this
+		// mode. Reject at registration, not at first call.
+		return nil, status.Error(codes.InvalidArgument, "auth_mode \"user_token\" requires credential_secret to be set")
+	}
 	// SSRF guard — mcp-gateway will make a real outbound request to this
 	// endpoint on the tenant's behalf every time the tool is called; see
 	// core/netguard for what this blocks and why.
@@ -79,7 +96,7 @@ func (s *Server) RegisterHttpTool(ctx context.Context, req *dataaccessv1.Registe
 	}
 
 	tool, err := mongodb.CreateHttpTool(ctx, req.GetTenantId(), connector.GetXId(), req.GetName(), req.GetDescription(),
-		req.GetHttpEndpoint(), method, req.GetParamsSchema(), credentialRefID, visibility, category)
+		req.GetHttpEndpoint(), method, req.GetParamsSchema(), credentialRefID, visibility, category, authMode)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

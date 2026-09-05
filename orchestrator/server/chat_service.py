@@ -10,6 +10,20 @@ profiles with no guardrails. For a guardrail-protected external profile
 screened, and only then sent — a hard guardrail can't coexist with
 real-time streaming, since a token already sent over the wire can't be
 unsent. See server/guardrails.py for the full reasoning.
+
+The system prompt is per-tenant, per-bot-profile, not a single hardcoded
+string: `_build_system_prompt` uses the active profile's `persona` (free
+text a business writes when it calls `create_bot_profile(persona=...)` —
+see ARCHITECTURE.md §3) as the base prompt, falling back to
+DEFAULT_SYSTEM_PROMPT only when a tenant hasn't set one.
+
+The LLM backend is per-bot-profile too: `llm/router.get_provider(assembly
+.llm_provider)` resolves which module (`llm/ollama_client.py`, the
+default, or `llm/openai_compat_client.py`) generates this profile's
+answer, both the tool-decision call (server/graph.py) and the synthesis
+call(s) below — never a hardcoded `ollama_client` import, so a tenant's
+choice of model is a platform capability, not something wired to one
+vendor.
 """
 
 import asyncio
@@ -31,8 +45,8 @@ import grpc  # noqa: E402
 from gen.orchestrator.v1 import chat_pb2, chat_pb2_grpc  # noqa: E402
 from weave_shared_clients import CoreClient  # noqa: E402
 
-from llm.ollama_client import chat, chat_stream  # noqa: E402
-from server.auth import InvalidTokenError, bearer_token_from_metadata, verify_access_token  # noqa: E402
+from llm.router import get_provider  # noqa: E402
+from server.auth import InvalidTokenError, bearer_token_from_metadata, mint_user_assertion, verify_access_token  # noqa: E402
 from server.graph import run_turn  # noqa: E402
 from server.guardrails import screen  # noqa: E402
 from server.router import classify_route  # noqa: E402
@@ -53,6 +67,29 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 GUARDRAIL_REFUSAL = "I'm not able to share that information."
+
+
+def _build_system_prompt(persona: str, relevant_facts: list[str]) -> str:
+    """Assembles the per-turn system prompt from a tenant's per-bot-profile
+    `persona` (docs/architecture/ARCHITECTURE.md §3's "prompt per tenant" —
+    free-form text a business writes describing this bot's role, tone, and
+    task scope, set via `create_bot_profile(persona=...)`; SDK docs call
+    this out explicitly since it's easy to leave blank and get the generic
+    default instead) plus this turn's cross-session recall block.
+
+    Falls back to DEFAULT_SYSTEM_PROMPT when a tenant hasn't set a persona
+    — every profile predating this field, or one that deliberately didn't
+    set it, still gets a working (if generic) assistant rather than an
+    empty system prompt."""
+    system_prompt = persona.strip() or DEFAULT_SYSTEM_PROMPT
+    if relevant_facts:
+        # Cross-session recall (docs/architecture/ARCHITECTURE.md §5) —
+        # distinct from prior_messages, which only ever covers this one
+        # session_id. These facts may come from any past conversation
+        # this user has had with this tenant.
+        facts_block = "\n".join(f"- {fact}" for fact in relevant_facts)
+        system_prompt += f"\n\nRelevant facts you know about this user from past conversations:\n{facts_block}"
+    return system_prompt
 
 # Simulated streaming for the guardrail-buffered path — the answer is
 # already fully generated and approved by the time this runs, so this is
@@ -121,14 +158,7 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
         else:
             chosen_tools = assembly.tools
 
-        system_prompt = DEFAULT_SYSTEM_PROMPT
-        if relevant_facts:
-            # Cross-session recall (docs/architecture/ARCHITECTURE.md §5)
-            # — distinct from prior_messages above, which only ever
-            # covers this one session_id. These facts may come from any
-            # past conversation this user has had with this tenant.
-            facts_block = "\n".join(f"- {fact}" for fact in relevant_facts)
-            system_prompt += f"\n\nRelevant facts you know about this user from past conversations:\n{facts_block}"
+        system_prompt = _build_system_prompt(assembly.persona, relevant_facts)
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -148,23 +178,39 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
             request.message,
         )
 
+        # Minted once per turn and forwarded on every tool call this turn
+        # makes (server/graph.py) — only a tool registered with
+        # auth_mode=="user_token" ever acts on it (mcp-gateway), so this
+        # is safe to always mint rather than checked per-tool here.
+        user_assertion = mint_user_assertion(claims.tenant_id, claims.user_id)
+
         state = await run_turn(
             messages,
             chosen_tools,
             guardrails=assembly.guardrails if assembly.guardrails_active else None,
+            llm_provider=assembly.llm_provider,
+            llm_model=assembly.llm_model,
+            user_assertion=user_assertion,
         )
         if state["tool_used"]:
             logger.info("tool_used=%s connector_used=%s", state["tool_used"], state["connector_used"])
 
+        # Resolved once and used for both the tool-decision call above
+        # (via run_turn) and the synthesis call(s) below — a turn never
+        # mixes two different backends' answers for the same bot profile.
+        provider = get_provider(assembly.llm_provider)
+        model = assembly.llm_model or None
+
         if assembly.guardrails_active:
             async for resp in self._guarded_response(
-                state, assembly.guardrails, session_id, claims.tenant_id, claims.user_id, token, request.message
+                state, assembly.guardrails, session_id, claims.tenant_id, claims.user_id, token, request.message,
+                provider, model,
             ):
                 yield resp
             return
 
         full_text_parts: list[str] = []
-        async for token_text in chat_stream(state["messages"]):
+        async for token_text in provider.chat_stream(state["messages"], model=model):
             full_text_parts.append(token_text)
             yield chat_pb2.ChatStreamResponse(
                 token=token_text,
@@ -194,8 +240,8 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
             connector_used=state["connector_used"],
         )
 
-    async def _guarded_response(self, state, guardrails: list[str], session_id: str, tenant_id: str, user_id: str, token: str, user_message: str):
-        result = await chat(state["messages"])
+    async def _guarded_response(self, state, guardrails: list[str], session_id: str, tenant_id: str, user_id: str, token: str, user_message: str, provider, model: str | None):
+        result = await provider.chat(state["messages"], model=model)
         verdict = await screen(result.content, guardrails)
 
         # Persist what was actually SENT, not the raw generation: if a
