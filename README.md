@@ -20,7 +20,7 @@ Weave resolves the tenant and active bot profile per request, assembles the avai
 
 ## Status
 
-**Pre-alpha, but no longer "nothing is built."** The core mechanic — dynamic tool assembly, per-bot-profile persona/guardrails/LLM-provider choice, per-tool visibility and per-end-user auth, session + cross-session memory, a real web chat/admin UI — is built and live-verified end-to-end against a real running stack (see `PLAN.md` for the phase-by-phase record, including what's honestly *not* yet verified). What "pre-alpha" still means: no published package (`weave-sdk` is a path/git dependency, not yet on PyPI), no license chosen yet, and several `docs/architecture/SECURITY.md`-tracked hardening gaps (credential rotation, service-to-service auth) before any real non-dev tenant should be onboarded. Two fully worked reference integrations exist as independent sibling projects — see [`OVERVIEW.md`](OVERVIEW.md) §6.
+**Pre-alpha, but no longer "nothing is built."** The core mechanic — dynamic tool assembly, per-bot-profile persona/guardrails/LLM-provider choice, per-tool visibility and per-end-user auth, session + cross-session memory, a real web chat/admin UI — is built and live-verified end-to-end against a real running stack (see `PLAN.md` for the phase-by-phase record, including what's honestly *not* yet verified). What "pre-alpha" still means: no published package (`weave-sdk` is a path/git dependency, not yet on PyPI), no license chosen yet, and several `docs/architecture/SECURITY.md`-tracked hardening gaps (credential rotation, service-to-service auth) before any real non-dev tenant should be onboarded. Two fully worked reference integrations exist as independent sibling projects — see [`OVERVIEW.md`](OVERVIEW.md) §6 and [`docs/guides/DEMO_TENANTS.md`](docs/guides/DEMO_TENANTS.md).
 
 ## Repository layout
 
@@ -49,13 +49,15 @@ docs/           Architecture and security documentation
 
 `channels/`, `compute/`, and `packs/` (thin per-channel adapters, platform-generic compute modules, vertical starter templates) are designed but not yet built — see `PLAN.md`'s "Phase 4+" for what's actually planned there, rather than treating an empty directory as documentation of intent.
 
-**Demo tenants live outside this repo entirely** — a tenant's integration is their own code in their own codebase, same as any real customer's would be. Two independent reference projects, each its own git repo, install `weave-sdk` and walk the same onboarding flow: `tarang-electronics` (Indian consumer electronics, B2C) and `suvidha-finserve` (Indian accounting/bookkeeping, B2B) — see `OVERVIEW.md` §6.
+**Demo tenants live outside this repo entirely** — a tenant's integration is their own code in their own codebase, same as any real customer's would be. Two independent reference projects, each its own git repo, install `weave-sdk` and walk the same onboarding flow: `tarang-electronics` (Indian consumer electronics, B2C) and `suvidha-finserve` (Indian accounting/bookkeeping, B2B) — see `OVERVIEW.md` §6 and [`docs/guides/DEMO_TENANTS.md`](docs/guides/DEMO_TENANTS.md) for what each demonstrates and how to run them. New tenants configuring their own integration should start with [`docs/guides/ONBOARDING.md`](docs/guides/ONBOARDING.md).
 
 ## Documentation
 
 - [`OVERVIEW.md`](OVERVIEW.md) — what Weave is, the core mechanic, tech stack, repo structure
 - [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) — system architecture, request lifecycle, data model, dynamic tool assembly (bulk/spec-driven registration, per-profile persona/LLM-provider, per-tool end-user auth)
 - [`docs/architecture/SECURITY.md`](docs/architecture/SECURITY.md) — trust boundaries, tenant isolation, credential handling, connector security
+- [`docs/guides/ONBOARDING.md`](docs/guides/ONBOARDING.md) — step-by-step configuration guide for onboarding a new tenant (sign up → connect a channel), with flow diagrams
+- [`docs/guides/DEMO_TENANTS.md`](docs/guides/DEMO_TENANTS.md) — the two reference tenant integrations (`tarang-electronics`, `suvidha-finserve`): what each demonstrates and how to run them end-to-end
 - [`PLAN.md`](PLAN.md) — the phase-by-phase build record: what's done, how each phase was live-verified, and honest gaps
 - [`DESIGN.md`](DESIGN.md) — visual identity and UI design system
 
