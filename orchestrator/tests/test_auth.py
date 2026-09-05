@@ -4,7 +4,7 @@ import jwt
 import pytest
 
 import server.auth as auth_module
-from server.auth import InvalidTokenError, bearer_token_from_metadata, verify_access_token
+from server.auth import InvalidTokenError, bearer_token_from_metadata, mint_user_assertion, verify_access_token
 
 SECRET = "test-secret-not-for-prod-but-long-enough-for-hs256"
 
@@ -75,3 +75,31 @@ def test_bearer_token_from_metadata_missing_raises():
 def test_bearer_token_from_metadata_case_insensitive_key():
     token = bearer_token_from_metadata((("Authorization", "Bearer xyz"),))
     assert token == "xyz"
+
+
+def test_mint_user_assertion_encodes_tenant_and_user():
+    token = mint_user_assertion("tnt_1", "usr_1")
+    payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+    assert payload["tenant_id"] == "tnt_1"
+    assert payload["user_id"] == "usr_1"
+    assert payload["typ"] == "user_assertion"
+
+
+def test_mint_user_assertion_is_short_lived():
+    token = mint_user_assertion("tnt_1", "usr_1")
+    payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+    assert 0 < payload["exp"] - payload["iat"] <= 60
+
+
+def test_mint_user_assertion_cannot_be_verified_as_an_access_token():
+    # A minted assertion must never work as a substitute access token —
+    # verify_access_token requires typ == "access" specifically.
+    token = mint_user_assertion("tnt_1", "usr_1")
+    with pytest.raises(InvalidTokenError, match="not an access token"):
+        verify_access_token(token)
+
+
+def test_mint_user_assertion_requires_jwt_secret(monkeypatch):
+    monkeypatch.setattr(auth_module, "JWT_SECRET", "")
+    with pytest.raises(InvalidTokenError, match="JWT_SECRET"):
+        mint_user_assertion("tnt_1", "usr_1")

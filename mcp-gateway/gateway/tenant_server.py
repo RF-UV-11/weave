@@ -22,6 +22,8 @@ from weave_shared_clients import CoreClient
 from core.data_access.v1 import http_tool_pb2
 
 from .http_caller import HttpToolCallError, call_http_tool
+from .http_signing import sign_user_identity
+from .user_assertion import InvalidUserAssertionError, verify_user_assertion
 
 logger = logging.getLogger("mcp_gateway.tenant_server")
 
@@ -69,6 +71,7 @@ def build_tenant_server(core: CoreClient, tenant_id: str) -> Server:
                     _meta={
                         "visibility": t.visibility or "internal",
                         "category": t.category or "general",
+                        "auth_mode": t.auth_mode or "none",
                     },
                 )
                 for t in tools
@@ -87,8 +90,53 @@ def build_tenant_server(core: CoreClient, tenant_id: str) -> Server:
                 isError=True,
             )
 
+        auth_mode = match.auth_mode or "none"
         secret = None
-        if match.credential_ref_id:
+        extra_headers: dict[str, str] = {}
+
+        if auth_mode == "user_token":
+            # This tool is restricted to the specific signed-in Weave
+            # user asking — see database/v1/http_tool.proto's auth_mode
+            # comment for the full design. No assertion (or an invalid
+            # one) means this call can never be attributed to a real
+            # user, so it's refused outright rather than silently falling
+            # back to an unscoped call.
+            assertion = (params.meta or {}).get("weave_user_assertion")
+            if not assertion:
+                return types.CallToolResult(
+                    content=[types.TextContent(
+                        type="text",
+                        text=f"Tool {name!r} requires a verified end-user identity, none was provided.",
+                    )],
+                    isError=True,
+                )
+            try:
+                user_id = verify_user_assertion(assertion, expected_tenant_id=tenant_id)
+            except InvalidUserAssertionError as exc:
+                logger.warning("rejected user_token call to %r for tenant %s: %s", name, tenant_id, exc)
+                return types.CallToolResult(
+                    content=[types.TextContent(type="text", text=f"Tool {name!r} rejected: invalid end-user identity.")],
+                    isError=True,
+                )
+
+            if not match.credential_ref_id:
+                # core's RegisterHttpTool already requires a credential
+                # for auth_mode=="user_token" — reachable here only if a
+                # tool predates that validation or credential vaulting
+                # itself failed silently, not a normal runtime path.
+                return types.CallToolResult(
+                    content=[types.TextContent(
+                        type="text", text=f"Tool {name!r} is misconfigured: auth_mode=user_token with no signing credential.",
+                    )],
+                    isError=True,
+                )
+            signing_key = await _reveal_secret(core, tenant_id, match._id)
+            extra_headers = {
+                "X-Weave-User-Id": user_id,
+                "X-Weave-Tenant-Id": tenant_id,
+                "X-Weave-User-Signature": sign_user_identity(signing_key, tenant_id=tenant_id, user_id=user_id),
+            }
+        elif match.credential_ref_id:
             secret = await _reveal_secret(core, tenant_id, match._id)
 
         try:
@@ -97,6 +145,7 @@ def build_tenant_server(core: CoreClient, tenant_id: str) -> Server:
                 method=match.http_method,
                 arguments=arguments,
                 secret=secret,
+                extra_headers=extra_headers,
             )
         except HttpToolCallError as exc:
             return types.CallToolResult(

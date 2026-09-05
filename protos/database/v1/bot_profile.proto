@@ -14,7 +14,18 @@ message BotProfile {
   string tenant_id = 2;
   // Unique per tenant, e.g. "external", "internal".
   string name = 3;
-  // Path/ref to the persona system prompt, e.g. "personas/external.md".
+  // This bot's system prompt, in full — the literal text sent to the
+  // model as the "system" message every turn (orchestrator/server/
+  // chat_service.py's _build_system_prompt), not a path or a reference to
+  // one: orchestrator never reads tenant-owned files, so there's nothing
+  // on its side that could resolve a path like "personas/external.md"
+  // into anything. A business writes this per bot profile (one tenant
+  // commonly has more than one — see `name`) to describe that bot's
+  // persona, tone, and task scope, e.g. "You are Tarang Electronics'
+  // customer-support assistant. Be concise, always cite the order ID you
+  // looked up, and never guess at a status you didn't get from a tool."
+  // Falls back to a generic default when left "" — a tenant that hasn't
+  // written one yet still gets a working assistant.
   string persona = 4;
   repeated string connector_ids = 5;
   repeated string channels = 6;
@@ -38,4 +49,26 @@ message BotProfile {
   // sends the user's message to a public search engine, out of scope of
   // this tenant's own systems.
   bool web_search_enabled = 11;
+  // Which LLM backend this bot profile's turns are generated on:
+  // "" (default) | "ollama" | "openai". "" and "ollama" behave
+  // identically — orchestrator's local model, per OLLAMA_MODEL/
+  // OLLAMA_HOST — so a profile predating this field, or one that never
+  // set it, keeps working exactly as before. "openai" routes through
+  // orchestrator/llm/openai_compat_client.py, which speaks the OpenAI
+  // chat-completions wire format — this covers OpenAI itself and any
+  // other provider exposing that same API shape (Azure OpenAI, Groq, a
+  // self-hosted vLLM/LM Studio server, etc.), selected by *where*
+  // OPENAI_BASE_URL points, not by a separate provider string per
+  // vendor. orchestrator holds the credentials for whichever backends
+  // it's configured for (env vars, same trust boundary as
+  // OLLAMA_HOST/OLLAMA_MODEL) — a bot profile picks which configured
+  // backend to use, it doesn't carry its own API key (that would need
+  // per-tenant credential-vault integration, tracked as real future
+  // work in ARCHITECTURE.md §3, not implemented here).
+  string llm_provider = 12;
+  // The model name/id to request from whichever llm_provider resolves
+  // to, e.g. "llama3.2:3b" (ollama) or "gpt-4o-mini" (openai). Falls
+  // back to that provider's own default env var
+  // (OLLAMA_MODEL/OPENAI_MODEL) when left "".
+  string llm_model = 13;
 }

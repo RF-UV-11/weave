@@ -50,4 +50,40 @@ message HttpTool {
   // analytical, instead of offering the full tool set. Also carried via
   // MCP _meta, same mechanism as visibility.
   string category = 12;
+  // "" | "none" | "user_token". Defaults to "" (== "none"): the
+  // long-standing behavior — credential_ref_id (if any) is sent to
+  // http_endpoint as a static "Authorization: Bearer <secret>" header,
+  // the same secret for every caller regardless of which end user is
+  // chatting.
+  //
+  // "user_token" is for a tenant's endpoints that must be scoped to the
+  // specific signed-in Weave user asking — a finance app's "my
+  // transactions" or "my account balance", where the tenant's own
+  // backend needs to know *which* of their registered users is calling,
+  // not just that *some* authorized caller is. Every ChatStream turn is
+  // already authenticated (there is no anonymous path in this system —
+  // docs/architecture/SECURITY.md §1), so this only ever restricts a
+  // tool to real, registered/signed-in Weave users, never opens one up.
+  //
+  // For a "user_token" tool, credential_ref_id is reinterpreted as an
+  // HMAC-SHA256 *signing key* (not a bearer token — mcp-gateway/gateway/
+  // tenant_server.py enforces this is set at registration time, since a
+  // "user_token" tool with nothing to sign with could never be verified
+  // tenant-side): orchestrator mints a short-lived signed assertion
+  // ({tenant_id, user_id}, orchestrator/server/auth.py's
+  // mint_user_assertion) carried via MCP's standard tools/call _meta
+  // field, exactly like visibility/category travel on tools/list.
+  // mcp-gateway verifies that assertion (it holds the same JWT_SECRET as
+  // orchestrator — both are Weave-owned internal services, same trust
+  // zone as core; this never touches a tenant's own secret), then
+  // computes signature = HMAC-SHA256(credential_secret, "{tenant_id}:
+  // {user_id}") and sends it to the tenant's http_endpoint as
+  // X-Weave-User-Id / X-Weave-Tenant-Id / X-Weave-User-Signature headers
+  // — the tenant's own API verifies that signature with the same shared
+  // secret it registered (the same webhook-signing-secret pattern
+  // Stripe/GitHub use for verifying inbound requests), then scopes its
+  // response to that verified user_id however it maps Weave users to its
+  // own user records. Weave never sees or needs to know the tenant's
+  // own user-identity scheme.
+  string auth_mode = 13;
 }

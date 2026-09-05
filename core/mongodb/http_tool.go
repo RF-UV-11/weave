@@ -58,7 +58,7 @@ func getConnectorByName(ctx context.Context, tenantID, name string) (*databasev1
 	return &c, nil
 }
 
-func CreateHttpTool(ctx context.Context, tenantID, connectorID, name, description, httpEndpoint, httpMethod, paramsSchema, credentialRefID, visibility, category string) (*databasev1.HttpTool, error) {
+func CreateHttpTool(ctx context.Context, tenantID, connectorID, name, description, httpEndpoint, httpMethod, paramsSchema, credentialRefID, visibility, category, authMode string) (*databasev1.HttpTool, error) {
 	t := &databasev1.HttpTool{
 		XId:             "htool_" + newULID(),
 		TenantId:        tenantID,
@@ -71,6 +71,7 @@ func CreateHttpTool(ctx context.Context, tenantID, connectorID, name, descriptio
 		CredentialRefId: credentialRefID,
 		Visibility:      visibility,
 		Category:        category,
+		AuthMode:        authMode,
 		CreatedAt:       time.Now().UTC().Format(time.RFC3339),
 	}
 	if _, err := Db.Db.Collection(ColNames.HttpTools).InsertOne(ctx, t); err != nil {

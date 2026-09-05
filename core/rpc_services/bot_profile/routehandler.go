@@ -38,9 +38,16 @@ func (s *Server) CreateBotProfile(ctx context.Context, req *dataaccessv1.CreateB
 	if visibility != "internal" && visibility != "external" {
 		return nil, status.Error(codes.InvalidArgument, "visibility must be \"internal\" or \"external\"")
 	}
+	// "" (== ollama, orchestrator's default) is valid too — this only
+	// rejects typos at registration time rather than letting them surface
+	// later as a silent fall-back to the default provider mid-conversation.
+	if p := req.GetLlmProvider(); p != "" && p != "ollama" && p != "openai" {
+		return nil, status.Error(codes.InvalidArgument, "llm_provider must be \"\", \"ollama\", or \"openai\"")
+	}
 
 	p, err := mongodb.CreateBotProfile(ctx, req.GetTenantId(), req.GetName(), req.GetPersona(),
-		req.GetConnectorIds(), req.GetChannels(), req.GetRolesAllowed(), visibility, req.GetGuardrails(), req.GetWebSearchEnabled())
+		req.GetConnectorIds(), req.GetChannels(), req.GetRolesAllowed(), visibility, req.GetGuardrails(), req.GetWebSearchEnabled(),
+		req.GetLlmProvider(), req.GetLlmModel())
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

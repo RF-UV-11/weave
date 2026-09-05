@@ -1,37 +1,34 @@
 """Ollama LLM client — local-first per OVERVIEW.md's tech stack table
 ("LLM access: OpenAI-compatible API + Ollama... same interface for cloud
-and local models"). This module is the Ollama half; a cloud provider
-would be a sibling module behind the same chat()/chat_stream() shape.
+and local models") and orchestrator's default provider (`llm/router.py`)
+when a tenant's bot profile hasn't chosen one. This module is the Ollama
+half; `openai_compat_client.py` is the cloud/self-hosted sibling behind
+the same chat()/chat_stream() shape — `router.py` is what lets callers
+treat the two interchangeably.
 """
 
 import os
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from typing import Any
 
 import ollama
+
+from .base import ChatResult, ToolCall
 
 MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
 HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 # A dedicated embedding model, not the chat model above — nomic-embed-text
 # is a small model purpose-built for embeddings (768 dimensions, matching
 # core/configs's EMBEDDING_DIM default; the two must stay in sync, see
-# server/semantic_memory.py). Never used for chat/tool-calling.
+# server/semantic_memory.py). Never used for chat/tool-calling, and never
+# provider-selectable per bot profile the way chat/chat_stream are below
+# — semantic memory embeds on Ollama regardless of a profile's
+# llm_provider (docs/architecture/ARCHITECTURE.md §5's "core is the only
+# tier with real infra credentials" boundary doesn't change here; making
+# embeddings provider-selectable too is real future work, not done here).
 EMBED_MODEL = os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
 _client = ollama.AsyncClient(host=HOST)
-
-
-@dataclass
-class ToolCall:
-    name: str
-    arguments: dict[str, Any]
-
-
-@dataclass
-class ChatResult:
-    content: str
-    tool_calls: list[ToolCall]
 
 
 def _to_ollama_tool(name: str, description: str, input_schema: dict[str, Any]) -> dict[str, Any]:
@@ -51,22 +48,26 @@ async def chat(
     messages: list[dict[str, str]],
     *,
     tools: list[tuple[str, str, dict[str, Any]]] | None = None,
+    model: str | None = None,
 ) -> ChatResult:
     """One non-streaming turn, optionally offering tools for the model to
     call. tools is a list of (name, description, input_schema) — the
     tool's description travels with it into the model's context here,
     same as it must travel with the tool's *result* afterward (PLAN.md's
-    tool-description requirement)."""
+    tool-description requirement). model overrides MODEL for this call —
+    how a bot profile's own `llm_model` (BotProfile.llm_model) takes
+    effect, falling back to the module default when unset (`""`/`None`)."""
     ollama_tools = [_to_ollama_tool(n, d, s) for n, d, s in (tools or [])]
-    resp = await _client.chat(model=MODEL, messages=messages, tools=ollama_tools or None)
+    resp = await _client.chat(model=model or MODEL, messages=messages, tools=ollama_tools or None)
     calls = [ToolCall(name=tc.function.name, arguments=dict(tc.function.arguments or {})) for tc in (resp.message.tool_calls or [])]
     return ChatResult(content=resp.message.content or "", tool_calls=calls)
 
 
-async def chat_stream(messages: list[dict[str, str]]) -> AsyncIterator[str]:
+async def chat_stream(messages: list[dict[str, str]], *, model: str | None = None) -> AsyncIterator[str]:
     """Streams the final answer token-by-token — no tools offered here,
-    this is only ever the synthesis step after any tool call is resolved."""
-    async for chunk in await _client.chat(model=MODEL, messages=messages, stream=True):
+    this is only ever the synthesis step after any tool call is resolved.
+    model overrides MODEL for this call, same convention as chat() above."""
+    async for chunk in await _client.chat(model=model or MODEL, messages=messages, stream=True):
         if chunk.message.content:
             yield chunk.message.content
 

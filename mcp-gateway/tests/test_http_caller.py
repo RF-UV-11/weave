@@ -136,6 +136,49 @@ async def test_response_exceeding_size_cap_raises():
         )
 
 
+async def test_extra_headers_are_sent():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(200, text="ok")
+
+    await call_http_tool(
+        endpoint="https://api.acme.test/me/transactions",
+        method="GET",
+        arguments={},
+        secret=None,
+        extra_headers={"X-Weave-User-Id": "usr_42", "X-Weave-Tenant-Id": "tnt_1"},
+        transport=transport_for(handler),
+    )
+    assert captured["headers"]["x-weave-user-id"] == "usr_42"
+    assert captured["headers"]["x-weave-tenant-id"] == "tnt_1"
+
+
+async def test_secret_still_sent_as_bearer_alongside_extra_headers():
+    # Not a realistic combination in practice (auth_mode="user_token"
+    # never also passes a bearer secret — tenant_server.py picks one or
+    # the other), but the two mechanisms are independent at this layer,
+    # not mutually exclusive by construction here.
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["auth"] = request.headers.get("authorization")
+        captured["custom"] = request.headers.get("x-custom")
+        return httpx.Response(200, text="ok")
+
+    await call_http_tool(
+        endpoint="https://api.acme.test/secure",
+        method="GET",
+        arguments={},
+        secret="sk-secret",
+        extra_headers={"X-Custom": "value"},
+        transport=transport_for(handler),
+    )
+    assert captured["auth"] == "Bearer sk-secret"
+    assert captured["custom"] == "value"
+
+
 async def test_connection_error_raises_tool_call_error():
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("connection refused")

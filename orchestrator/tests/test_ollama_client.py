@@ -30,3 +30,38 @@ async def test_embed_calls_embed_model_and_returns_vector(monkeypatch):
 
     assert vector == [0.1, 0.2, 0.3]
     fake_embed.assert_awaited_once_with(model=ollama_client_module.EMBED_MODEL, input="hello world")
+
+
+async def test_chat_uses_module_default_model_when_none_given(monkeypatch):
+    fake_message = SimpleNamespace(content="hi", tool_calls=None)
+    fake_chat = AsyncMock(return_value=SimpleNamespace(message=fake_message))
+    monkeypatch.setattr(ollama_client_module._client, "chat", fake_chat)
+
+    await ollama_client_module.chat([{"role": "user", "content": "hi"}])
+
+    assert fake_chat.call_args.kwargs["model"] == ollama_client_module.MODEL
+
+
+async def test_chat_model_override_takes_precedence(monkeypatch):
+    fake_message = SimpleNamespace(content="hi", tool_calls=None)
+    fake_chat = AsyncMock(return_value=SimpleNamespace(message=fake_message))
+    monkeypatch.setattr(ollama_client_module._client, "chat", fake_chat)
+
+    await ollama_client_module.chat([{"role": "user", "content": "hi"}], model="llama3.2:1b")
+
+    assert fake_chat.call_args.kwargs["model"] == "llama3.2:1b"
+
+
+async def test_chat_stream_model_override_takes_precedence(monkeypatch):
+    async def fake_stream_gen():
+        yield SimpleNamespace(message=SimpleNamespace(content="hi"))
+
+    async def fake_chat(*, model, messages, stream):
+        assert model == "llama3.2:1b"
+        return fake_stream_gen()
+
+    monkeypatch.setattr(ollama_client_module._client, "chat", fake_chat)
+
+    chunks = [c async for c in ollama_client_module.chat_stream([{"role": "user", "content": "hi"}], model="llama3.2:1b")]
+
+    assert chunks == ["hi"]

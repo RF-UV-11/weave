@@ -13,12 +13,12 @@ func TestCreateAndGetActiveBotProfileByChannel(t *testing.T) {
 	}
 
 	external, err := CreateBotProfile(t.Context(), tenant.GetXId(), "external", "personas/external.md",
-		nil, []string{"web-widget", "whatsapp"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil, false)
+		nil, []string{"web-widget", "whatsapp"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil, false, "", "")
 	if err != nil {
 		t.Fatalf("CreateBotProfile external: %v", err)
 	}
 	internal, err := CreateBotProfile(t.Context(), tenant.GetXId(), "internal", "personas/internal.md",
-		nil, []string{"slack"}, []databasev1.Role{databasev1.Role_ROLE_STAFF, databasev1.Role_ROLE_ADMIN}, "internal", nil, false)
+		nil, []string{"slack"}, []databasev1.Role{databasev1.Role_ROLE_STAFF, databasev1.Role_ROLE_ADMIN}, "internal", nil, false, "", "")
 	if err != nil {
 		t.Fatalf("CreateBotProfile internal: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestGetActiveBotProfileByChannelIsolatedPerTenant(t *testing.T) {
 	}
 
 	if _, err := CreateBotProfile(t.Context(), tenantA.GetXId(), "external", "personas/external.md",
-		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil, false); err != nil {
+		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil, false, "", ""); err != nil {
 		t.Fatalf("CreateBotProfile A: %v", err)
 	}
 
@@ -66,7 +66,7 @@ func TestGetActiveBotProfileByChannelNoMatch(t *testing.T) {
 		t.Fatalf("CreateTenant: %v", err)
 	}
 	if _, err := CreateBotProfile(t.Context(), tenant.GetXId(), "external", "personas/external.md",
-		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil, false); err != nil {
+		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil, false, "", ""); err != nil {
 		t.Fatalf("CreateBotProfile: %v", err)
 	}
 
@@ -83,7 +83,7 @@ func TestCreateBotProfilePersistsVisibilityAndGuardrails(t *testing.T) {
 
 	guardrails := []string{"Never disclose internal SKU codes.", "Never disclose supplier names."}
 	profile, err := CreateBotProfile(t.Context(), tenant.GetXId(), "external", "personas/external.md",
-		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", guardrails, true)
+		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", guardrails, true, "", "")
 	if err != nil {
 		t.Fatalf("CreateBotProfile: %v", err)
 	}
@@ -106,17 +106,58 @@ func TestCreateBotProfilePersistsVisibilityAndGuardrails(t *testing.T) {
 	}
 }
 
+func TestCreateBotProfilePersistsLlmProviderAndModel(t *testing.T) {
+	tenant, err := CreateTenant(t.Context(), "LLM Provider Test Co", "business")
+	if err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+
+	profile, err := CreateBotProfile(t.Context(), tenant.GetXId(), "external", "persona text",
+		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil, false,
+		"openai", "gpt-4o-mini")
+	if err != nil {
+		t.Fatalf("CreateBotProfile: %v", err)
+	}
+	if profile.GetLlmProvider() != "openai" || profile.GetLlmModel() != "gpt-4o-mini" {
+		t.Fatalf("got llm_provider=%q llm_model=%q", profile.GetLlmProvider(), profile.GetLlmModel())
+	}
+
+	fetched, err := GetActiveBotProfileByChannel(t.Context(), tenant.GetXId(), "web-widget")
+	if err != nil {
+		t.Fatalf("GetActiveBotProfileByChannel: %v", err)
+	}
+	if fetched.GetLlmProvider() != "openai" || fetched.GetLlmModel() != "gpt-4o-mini" {
+		t.Fatalf("llm_provider/llm_model didn't round-trip: %+v", fetched)
+	}
+}
+
+func TestCreateBotProfileDefaultsLlmProviderAndModelToEmpty(t *testing.T) {
+	tenant, err := CreateTenant(t.Context(), "LLM Default Test Co", "business")
+	if err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+
+	profile, err := CreateBotProfile(t.Context(), tenant.GetXId(), "internal", "persona text",
+		nil, []string{"slack"}, []databasev1.Role{databasev1.Role_ROLE_STAFF}, "internal", nil, false, "", "")
+	if err != nil {
+		t.Fatalf("CreateBotProfile: %v", err)
+	}
+	if profile.GetLlmProvider() != "" || profile.GetLlmModel() != "" {
+		t.Fatalf("expected empty llm_provider/llm_model by default, got %q/%q", profile.GetLlmProvider(), profile.GetLlmModel())
+	}
+}
+
 func TestListBotProfiles(t *testing.T) {
 	tenant, err := CreateTenant(t.Context(), "List Bot Profiles Co", "business")
 	if err != nil {
 		t.Fatalf("CreateTenant: %v", err)
 	}
 	if _, err := CreateBotProfile(t.Context(), tenant.GetXId(), "external", "personas/external.md",
-		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil, false); err != nil {
+		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil, false, "", ""); err != nil {
 		t.Fatalf("CreateBotProfile external: %v", err)
 	}
 	if _, err := CreateBotProfile(t.Context(), tenant.GetXId(), "internal", "personas/internal.md",
-		nil, []string{"slack"}, []databasev1.Role{databasev1.Role_ROLE_STAFF}, "internal", nil, false); err != nil {
+		nil, []string{"slack"}, []databasev1.Role{databasev1.Role_ROLE_STAFF}, "internal", nil, false, "", ""); err != nil {
 		t.Fatalf("CreateBotProfile internal: %v", err)
 	}
 
@@ -139,7 +180,7 @@ func TestListBotProfilesIsolatedPerTenant(t *testing.T) {
 		t.Fatalf("CreateTenant B: %v", err)
 	}
 	if _, err := CreateBotProfile(t.Context(), tenantA.GetXId(), "external", "personas/external.md",
-		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil, false); err != nil {
+		nil, []string{"web-widget"}, []databasev1.Role{databasev1.Role_ROLE_CUSTOMER}, "external", nil, false, "", ""); err != nil {
 		t.Fatalf("CreateBotProfile A: %v", err)
 	}
 

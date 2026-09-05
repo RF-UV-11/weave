@@ -16,6 +16,9 @@ def make_core(
     visibility="internal",
     guardrails=None,
     web_search_enabled=False,
+    persona="",
+    llm_provider="",
+    llm_model="",
 ):
     core = SimpleNamespace()
     core.bot_profile = SimpleNamespace(
@@ -29,6 +32,9 @@ def make_core(
                     visibility=visibility,
                     guardrails=guardrails or [],
                     web_search_enabled=web_search_enabled,
+                    persona=persona,
+                    llm_provider=llm_provider,
+                    llm_model=llm_model,
                 )
             )
         )
@@ -182,6 +188,43 @@ async def test_internal_profile_sees_every_tool_regardless_of_visibility(monkeyp
     result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
     names = {t.tool.name for t in result.tools}
     assert names == {"track_order", "get_customer_pii"}
+
+
+async def test_persona_propagates_from_profile(monkeypatch):
+    core = make_core(
+        profile_roles_allowed=[4],
+        profile_connector_ids=[],
+        connectors=[],
+        persona="You are Tarang Electronics' support bot. Be concise and cite order IDs.",
+    )
+    result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
+    assert result.persona == "You are Tarang Electronics' support bot. Be concise and cite order IDs."
+
+
+async def test_persona_defaults_to_empty_string_when_unset(monkeypatch):
+    core = make_core(profile_roles_allowed=[4], profile_connector_ids=[], connectors=[])
+    result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
+    assert result.persona == ""
+
+
+async def test_llm_provider_and_model_propagate_from_profile(monkeypatch):
+    core = make_core(
+        profile_roles_allowed=[4],
+        profile_connector_ids=[],
+        connectors=[],
+        llm_provider="openai",
+        llm_model="gpt-4o-mini",
+    )
+    result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
+    assert result.llm_provider == "openai"
+    assert result.llm_model == "gpt-4o-mini"
+
+
+async def test_llm_provider_and_model_default_to_empty_string(monkeypatch):
+    core = make_core(profile_roles_allowed=[4], profile_connector_ids=[], connectors=[])
+    result = await assemble_tools(core, tenant_id="tnt_1", channel="web-widget", role="customer", token="tok")
+    assert result.llm_provider == ""
+    assert result.llm_model == ""
 
 
 async def test_analytics_tools_property_filters_by_category(monkeypatch):

@@ -146,7 +146,11 @@ weave/
 │                      embeddable widget build
 ├── packs/             Tenant config templates: business.yaml/persona.yaml equivalents,
 │                      vertical starter packs (clinic, e-commerce, law firm, ...)
-├── packages/          shared-auth, shared-clients, connector-sdk
+├── packages/          shared-auth, shared-clients (internal-platform only),
+│                      weave-sdk (the tenant-facing SDK — self-contained,
+│                      bundles its own generated gRPC stubs rather than
+│                      depending on shared-clients, so it installs into
+│                      *any* external Python project on its own)
 ├── protos/            buf.yaml, buf.gen.yaml, every service contract
 ├── infra/             podman-compose.yml, containerfiles/, envoy/, k8s/
 └── docs/
